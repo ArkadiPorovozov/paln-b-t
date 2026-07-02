@@ -3,3 +3,8 @@
 --require("prototype.entity.entity")
 --require("prototype.space-map.gen-space-lock")
 --require("death-is-not-the-end.data")
+
+
+
+require("prototype.entity.entity")
+require("prototype.item.item")

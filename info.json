@@ -1,0 +1,10 @@
+{
+    "name": "paln-b-test",
+    "author": "ARKADI_POROVOZOV",
+    "version": "0.0.1",
+    "title": "123",
+    "description": "qq", 
+    "contact": "https://discord.gg/hsfpf8VwYS",
+    "factorio_version": "2.1",
+    "dependencies": ["base >= 2.0.28", "space-age"]
+}

@@ -2,7 +2,6 @@ local hit_effects = require("__base__.prototypes.entity.hit-effects")
 local item_sounds = require("__base__.prototypes.item_sounds")
 local sounds = require("__base__.prototypes.entity.sounds")
 
-local config = require("script.config")
 
 local q = "__paln-b-test__"
 local a_speed = 1
@@ -206,18 +205,6 @@ scrubber.graphics_set = {
           scale = 0.5,
           draw_as_shadow = true
         },
-      }
-    },
-    working_visualisations = {
-      {
-        filename = q .. "/graphics/entity/scrubber/scrubber-color1.png",
-        height = 280,
-        width = 210,
-        shift = util.by_pixel(0, 0),
-        animation_speed = a_speed,
-        line_length = 10,
-        frame_count = 60,
-        scale = 0.5
       }
     }
   }

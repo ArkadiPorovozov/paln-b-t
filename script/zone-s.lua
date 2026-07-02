@@ -1,46 +1,33 @@
-local config = require("config")
+local config = require("script.config")
 local zone = {}
 
--- Проверка квадратного радиуса при установке
 function zone.check_placement(entity, player_index)
-    local params = config.scrubbers[entity.name]
-    if not params then return true end
-
-    local r = params.radius
-    local pos = entity.position
-    local area = {{pos.x - r, pos.y - r}, {pos.x + r, pos.y + r}}
+    if not (entity and entity.valid) or entity.name ~= config.scrubber_name then return end
+    
+    local r = config.radius
+    local area = {
+        {entity.position.x - r, entity.position.y - r},
+        {entity.position.x + r, entity.position.y + r}
+    }
 
     local neighbors = entity.surface.find_entities_filtered{
-        name = entity.name,
+        name = config.scrubber_name,
         area = area
     }
 
-    for _, neighbor in pairs(neighbors) do
-        if neighbor ~= entity then
-            zone.reject_placement(entity, player_index, r)
-            return false
+    for _, n in pairs(neighbors) do
+        if n ~= entity then
+            if player_index then
+                game.players[player_index].create_local_flying_text{
+                    text = "♂️ Hey Jabroni, too close! (Radius " .. r .. ") ♂️",
+                    position = entity.position,
+                    color = {1, 0, 0}
+                }
+            end
+            entity.destroy()
+            return
         end
     end
-    return true
-end
-
-function zone.reject_placement(entity, player_index, r)
-    local surface = entity.surface
-    local pos = entity.position
-    local player = player_index and game.players[player_index]
-
-    if player then
-        player.create_local_flying_text{
-            text = "♂️ Too close, jabroni! Radius: " .. r .. " ♂️",
-            position = pos,
-            color = {1, 0, 0}
-        }
-        local stack = entity.prototype.items_to_place_this[1]
-        if stack then player.insert(stack) end
-    else
-        surface.spill_item_stack(pos, entity.prototype.items_to_place_this[1])
-    end
-    entity.destroy()
 end
 
 return zone

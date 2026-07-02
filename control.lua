@@ -1,68 +1,71 @@
-local zone = require("script.zone-s")
-local work = require("script.work-s")
 local config = require("script.config")
+local work = require("script.work-s")
+local zone = require("script.zone-s")
 
--- ♂️ Debug Command ♂️
-commands.add_command("scrub_debug", "Toggle Gym Visualization", function()
-    storage.debug_enabled = not storage.debug_enabled
-    rendering.clear(script.mod_name)
-    game.print("♂️ Scrubber Debug: " .. (storage.debug_enabled and "ON" or "OFF") .. " ♂️")
+-- Каждую секунду проверяем рабов
+script.on_nth_tick(60, function()
+    for _, surface in pairs(game.surfaces) do
+        work.process_all(surface)
+    end
 end)
 
--- Отрисовка радиусов для Master'а
-local function draw_debug_zones()
-    if not storage.debug_enabled then return end
-    rendering.clear(script.mod_name)
-    
-    for name, params in pairs(config.scrubbers) do
-        for _, surface in pairs(game.surfaces) do
-            local entities = surface.find_entities_filtered{name = name}
-            for _, ent in pairs(entities) do
-                rendering.draw_rectangle{
-                    color = params.color,
-                    width = 2,
-                    filled = false,
-                    left_top = {ent.position.x - params.radius, ent.position.y - params.radius},
-                    right_bottom = {ent.position.x + params.radius, ent.position.y + params.radius},
-                    surface = ent.surface,
-                    target = ent,
-                    draw_on_ground = true,
-                    time_to_live = 65 -- чуть больше секунды (если обновляем раз в 60 тиков)
-                }
-            end
-        end
-    end
-end
-
--- Обработка событий
+-- Ивенты постройки
 script.on_event({
-    defines.events.on_built_entity, 
-    defines.events.on_robot_built_entity, 
+    defines.events.on_built_entity,
+    defines.events.on_robot_built_entity,
     defines.events.on_space_platform_built_entity
 }, function(event)
-    local ent = event.entity
-    if not (ent and ent.valid) then return end
-
-    -- Проверка на расстановку
-    if config.scrubbers[ent.name] then
-        zone.check_placement(ent, event.player_index)
-    end
-
-    -- Если поставили раба, сразу чекаем его статус
-    if config.slaves[ent.name] then
-        work.update_slave_status(ent)
+    local e = event.entity
+    if not (e and e.valid) then return end
+    
+    if e.name == config.scrubber_name then
+        zone.check_placement(e, event.player_index)
+    elseif config.slaves[e.name] then
+        work.update_entity(e, e.surface)
     end
 end)
 
--- Рабочий цикл
-script.on_nth_tick(60, function()
-    work.process_all_slaves()
-    if storage.debug_enabled then
-        draw_debug_zones()
+-- Удаление данных при сносе здания (чтобы не забивать память)
+script.on_event({defines.events.on_player_mined_entity, defines.events.on_robot_mined_entity, defines.events.on_entity_died}, function(event)
+    if event.entity and event.entity.unit_number then
+        if storage.backup_recipes then
+            storage.backup_recipes[event.entity.unit_number] = nil
+        end
     end
 end)
 
--- Инициализация storage
-script.on_init(function()
-    storage.debug_enabled = false
+-- Дебаг команда
+commands.add_command("scrub_debug", "♂️ Show Radius ♂️", function()
+    storage.debug = not storage.debug
+    rendering.clear(script.mod_name)
+    game.print("♂️ Debug mode: " .. (storage.debug and "ON" or "OFF"))
 end)
+
+script.on_nth_tick(61, function()
+    if not storage.debug then return end
+    rendering.clear(script.mod_name)
+    local r = config.radius
+    for _, surface in pairs(game.surfaces) do
+        local ms = surface.find_entities_filtered{name = config.scrubber_name}
+        for _, m in pairs(ms) do
+            rendering.draw_rectangle{
+                color = {r = 1, g = 0.5, b = 0, a = 0.15},
+                width = 2,
+                left_top = {m.position.x - r, m.position.y - r},
+                right_bottom = {m.position.x + r, m.position.y + r},
+                surface = m.surface,
+                target = m,
+                draw_on_ground = true
+            }
+        end
+    end
+end)
+
+-- ♂️ FULL SAFETY INITIALIZATION ♂️
+local function init_storage()
+    storage.backup_recipes = storage.backup_recipes or {}
+    storage.debug = storage.debug or false
+end
+
+script.on_init(init_storage)
+script.on_configuration_changed(init_storage)

@@ -1,39 +1,64 @@
-local config = require("config")
+local config = require("script.config")
 local work = {}
 
--- Обновление состояния конкретного "раба"
-function work.update_slave_status(entity)
-    local master_name = config.slaves[entity.name]
-    if not master_name then return end
+-- ♂️ SURGICAL FIX: Lazy Initialization ♂️
+local function get_backup_table()
+    if not storage.backup_recipes then
+        storage.backup_recipes = {}
+    end
+    return storage.backup_recipes
+end
 
-    local r = config.scrubbers[master_name].radius
-    local pos = entity.position
+function work.update_entity(entity, surface)
+    if not (entity and entity.valid) then return end
     
-    local master_gym = entity.surface.find_entities_filtered{
-        name = master_name,
+    local r = config.radius
+    local pos = entity.position
+    local u = entity.unit_number
+    local backup_recipes = get_backup_table() -- ♂️ Safe access ♂️
+    
+    -- Поиск Босса в квадрате
+    local masters = surface.find_entities_filtered{
+        name = config.scrubber_name,
         area = {{pos.x - r, pos.y - r}, {pos.x + r, pos.y + r}}
     }
 
-    -- Проверяем, есть ли хоть один активный (запитанный) скруббер
-    local active_master = false
-    for _, m in pairs(master_gym) do
-        if m.status ~= defines.entity_status.no_power then
-            active_master = true
+    local has_master = false
+    for _, m in pairs(masters) do
+        if m.active and (m.status == defines.entity_status.working or m.status == defines.entity_status.normal) then
+            has_master = true
             break
         end
     end
 
-    entity.active = active_master
+    if not has_master then
+        -- ♂️ DISABLING ♂️
+        entity.operable = false
+        
+        local current_recipe = entity.get_recipe()
+        if current_recipe then
+            backup_recipes[u] = current_recipe.name
+            entity.set_recipe(nil)
+            game.print("♂️ Scrubber: Jabroni " .. entity.name .. " lost his recipe! ♂️")
+        end
+    else
+        -- ♂️ ENABLING ♂️
+        entity.operable = true
+        
+        if backup_recipes[u] then
+            local r_name = backup_recipes[u]
+            entity.set_recipe(r_name)
+            backup_recipes[u] = nil
+            game.print("♂️ Scrubber: Slave " .. entity.name .. " returned to work! ♂️")
+        end
+    end
 end
 
--- Глобальная проверка по всем поверхностям
-function work.process_all_slaves()
-    for _, surface in pairs(game.surfaces) do
-        for slave_name, _ in pairs(config.slaves) do
-            local entities = surface.find_entities_filtered{name = slave_name}
-            for _, e in pairs(entities) do
-                work.update_slave_status(e)
-            end
+function work.process_all(surface)
+    for slave_name, _ in pairs(config.slaves) do
+        local entities = surface.find_entities_filtered{name = slave_name}
+        for _, e in pairs(entities) do
+            work.update_entity(e, surface)
         end
     end
 end

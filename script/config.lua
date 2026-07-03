@@ -10,23 +10,31 @@ config.scrubber = {
 }
 
 config.slaves = {
-    target_name = "assembling-machine-3"
+    target_names = {"assembling-machine-3", "assembling-machine-2"}
 }
 
--- Настройки пара самого Scrubber (из трубы)
+
 config.visuals = {
     smoke_name = "turbine-smoke",
-    smoke_offset = {x = -0.1, y = -1.4},
-    base_smoke_count = 1
+    smoke_offset = {x = 0, y = 0},
+    base_smoke_count = 0.1,
+    vertical_speed = 0.7
+}
+config.random_tr = {
+    range = 0.5,
+    frequency = 2
 }
 
--- ♂️ Новая секция: Дым наказания на асемблерах ♂️
 config.punishment_visuals = {
     smoke_name = "smoke",
-    count = 4,
+    count = 3,
     offset = {x = 0, y = 0},
-    deviation = {x = 1.2, y = 1.2},
-    vertical_speed = 0.04
+    deviation = {x = 1.5, y = 1.5},
+    vertical_speed = 0.02
+}
+config.random = {
+    range = 0.8,
+    frequency = 0.8
 }
 
 return config

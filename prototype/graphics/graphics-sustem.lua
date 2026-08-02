@@ -85,6 +85,46 @@ local function conduit_color_animation()
   }
 end
 
+local function assembler_graphics_set()
+  return
+  {
+    layers =
+    {
+      util.sprite_load("__base__/graphics/entity/assembling-machine-1/assembling-machine-1-base",
+      {
+        priority = "high",
+        frame_count = 1,
+        repeat_count = 64,
+        scale = 0.5,
+      }),
+      util.sprite_load("__base__/graphics/entity/assembling-machine-1/assembling-machine-1-anim",
+      {
+        priority = "high",
+        frame_count = 64,
+        scale = 0.5,
+      }),
+      util.sprite_load(q .. "/graphics/entity/sa123",
+      {
+        priority = "high",
+        frame_count = 1,
+        repeat_count = 64,
+        scale = 0.5,
+        width = 253,
+        height = 275,
+        shift = util.by_pixel( 0, 0),
+      }),
+      util.sprite_load("__base__/graphics/entity/assembling-machine-1/assembling-machine-1-shadow",
+      {
+        priority = "high",
+        frame_count = 1,
+        repeat_count = 64,
+        scale = 0.5,
+        draw_as_shadow = true,
+      }),
+    }
+  }
+end
+
 return
 {
     conduit_graphics_set = {
@@ -93,8 +133,9 @@ return
       conduit_working(),
       conduit_color_animation(),
     },
-
   },
-
+  assembler4_graphics_set = {
+    animation = assembler_graphics_set(),
+  }
 }
 --conduit

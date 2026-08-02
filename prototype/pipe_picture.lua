@@ -1,4 +1,4 @@
-local q = "__test12__"
+local q = "__paln-b-test__"
 
 local function make_pipe_layers(main_path, w, h, shift)
   return {

@@ -1,0 +1,1590 @@
+MultiBuild 0.4 — каркас + прозрачное меню + платформенная анимация + хранилище и выделение области
+
+Новое в 0.4:
+
+    Отдельная вкладка предметов — все предметы мода (блок, хранилище, маркер)
+    лежат в своей группе крафта «Каркасное строительство».
+    Строительное хранилище — зелёный сундук с видимой зоной покрытия 5×5
+    (контур и заливка рисуются постоянно). Склад оплачивает любую постройку,
+    которой зона касается — кадра, стоящего впритык на соседней клетке, уже
+    достаточно. Клади здания руками, манипуляторами или дронами. Именно так зону
+    обслуживают дроны: достроили каркас рядом со складом — сборка запускается
+    автоматически.
+    Кадры строятся только при наличии ресурса. Кадры полупрозрачные — это
+    «план» постройки. Если контур готов, а ресурса нет (ни в складе, ни в
+    инвентаре), постройка не отменяется, а планируется: контур подсвечивается
+    оранжевым и, как только нужное здание появится в касающемся хранилище,
+    строительство запустится само — манипуляторы/дроны довезли предмет до склада,
+    и пошла анимация. Разобрал каркас — план отменился.
+    Постройка выделением области — предмет «Маркер области постройки»
+    (рецепт рядом с блоком, или хоткей Alt+B, или кнопка в панели шорткатов):
+    выдели область протяжкой — циановую рамку во время выделения рисует сама
+    игра, как при наведении на здание; при отпускании постройка запускается.
+    Одиночный клик работает как обычный клик по каркасу, ПКМ — снять подсветку.
+
+Здания строятся из одного универсального микроблока 1×1 (Микроблок каркаса):
+
+    Скрафти блоки (1 железная пластина → 2 блока).
+    Выложи из них сплошной прямоугольник по площади здания (3×3 под сборочный
+    автомат, 5×5 под НПЗ, 9×9 под ракетную шахту...). Вручную, дронами, чертежом — без разницы.
+    Кликни по каркасу — откроется полупрозрачное меню с иконками всех зданий,
+    подходящих под этот размер. Выбери нужное.
+    С инвентаря спишется 1 предмет здания и проиграется настоящая анимация
+    строительства с космической платформы: над площадкой, начиная от центра,
+    поднимаются строительные леса (вместе со звуком build_animated_*), за ними
+    появляется здание, после чего леса опускаются. Чем больше здание — тем дольше
+    анимация, ровно как на платформе. Спрайты лесов мод грузит прямо из файлов
+    Space Age — своя графика в моде не хранится.
+    Если под размер подходит только одно здание (например, 4×4 робопорт) —
+    всё происходит сразу, без меню: автоматически при постановке последнего блока.
+
+Space Age — обязательная зависимость. Кастомных запасных анимаций в моде
+нет: если леса не запустились, мод выводит красную ошибку в чат и лог
+(см. «Диагностика»), а каркас и оплата остаются на месте.
+Файлы
+
+text
+
+multibuild_0.4.0/
+├── info.json
+├── shared.lua                  -- TARGETS, COST_FROM_INVENTORY, STORAGE_ZONE_HALF (зона 5×5)
+├── data.lua                    -- группа предметов, блок, хранилище, маркер, хоткей, стиль, анимации mb-panim-*
+├── control.lua                 -- кластер, меню, очередь, оплата хранилище→игрок, выбор области
+├── platform_anim.lua           -- проигрыватель платформенных лесов (MIT, Quezler)
+├── entity-build-animations.lua -- КОРЕНЬ: ссылки на PNG-спрайты из Space Age
+├── locale/ru/multibuild.cfg
+└── locale/en/multibuild.cfg
+
+Настройки (shared.lua)
+Параметр	Что делает
+TARGETS	Список зданий, доступных для постройки из каркаса. Отсутствующие в игре пропускаются сами.
+COST_FROM_INVENTORY	true — сборка списывает 1 предмет здания: сначала ищется зелёное хранилище, чья зона покрывает постройку, потом — инвентарь игрока. false — бесплатно (режим песочницы).
+STORAGE_ZONE_HALF	Половина стороны зоны хранилища. 2 ⇒ зона 5×5 с хранилищем в центре. Склад оплачивает постройку, если зона касается хотя бы одного её тайла: кадр впритык на соседней клетке уже в зоне.
+PENDING_POLL_TICKS	Как часто проверять запланированные постройки (ждущие ресурс). 20 тиков = 3 раза в секунду.
+Настройка прозрачности меню
+
+В
+data.lua, в стиле mb_transparent_frame:
+
+Lua
+
+opacity = 0.75, -- 0.0 = полностью прозрачный фон, 1.0 = непрозрачный
+
+Как устроена анимация постройки
+
+Это реальная платформенная анимация, структура данных и логика проигрывания
+взяты из мода Quezler «Space platform entity build animation lib» (лицензия MIT):
+https://github.com/Quezler/glutenfree/tree/main/mods_2.0/109_space-platform-entity-build-animation-lib
+
+    Графика не входит в мод:
+    entity-build-animations.lua (лежит в корне
+    мода) ссылается напрямую на PNG основной игры
+    (__space-age__/graphics/entity/space-platform-build-anim/*.png), а параметры
+    кадров (width/height/shift/line_length, 32 кадра, scale 0.5) повторяют
+    helper-файлы Space Age. Если Wube в патче переместят спрайты — поправь константу
+    DIR в этом файле (путь виден в папке Factorio/data/space-age/graphics/...).
+    require в data.lua — относительный (require("entity-build-animations")),
+    номеру/имени мода безразличен, и без pcall: если файл или спрайты не найдутся,
+    игра покажет понятную ошибку при загрузке модов, а не тихо отключит анимацию.
+    В
+    data.lua регистрируются 8 анимаций mb-panim-<угол>-<top|body>.
+    platform_anim.lua — проигрыватель: на каждый тайл площадки создаёт по паре
+    rendering.draw_animation (верх лесов + тело с тенью). Подъём каждого тайла
+    задержан на манхэттенское расстояние от центра × 16 тиков, леса замирают на
+    16-м кадре, затем проигрывают кадры 16–32 (опускание). Плюс звук
+    utility/build_animated_small/medium/large/huge по площади постройки.
+    Тайминг синхронизирован с постройкой: при запуске каркас снимается и
+    запускается анимация; когда леса полностью подняты (up_at) — под ними
+    создаётся здание; когда они опустились (down_at) — финальная вспышка.
+    Для 3×3 весь цикл ≈ 2.3 сек, для 9×9 ≈ 4.3 сек (как на платформе).
+    Если за время подъёма место заняли — здание и блоки высыпаются на землю.
+
+Диагностика: «анимации нет»
+
+    При загрузке карты в factorio-current.log должна быть строка:
+    multibuild: анимаций лесов зарегистрировано: 8
+    — если её нет, блок регистрации в data-стадии в твоём моде не выполняется
+    (файл/reequire). Если там 0 — require вернул не то.
+    Если при постройке в чат вылетает красное MultiBuild: платформенная анимация не запустилась: <текст> — пришли этот текст: в нём точная причина
+    (имя спрайта/рендер-параметр/слой).
+
+Аварийного режима нет
+
+Раньше был «свой» упрощённый эффект, который молча включался вместо лесов —
+удалён, чтобы сбои анимации были видны, а не маскировались.
+Правила и ограничения
+
+    Кадры каркаса стоят всю анимацию: они убираются ровно в момент, когда под
+    лесами появляется здание, а при отмене — возвращаются.
+    Соседние каркасы не мешают: клик по клетке ищет внутри большого кластера
+    под-прямоугольник под шаблон здания, содержащий эту клетку (4×4 найдёт
+    робопорт в углу поля, 3×3 — автомат внутри стены из блоков). Приоритет —
+    большим зданиям: если клик накрывают и 5×5, и 3×3, выберется большее.
+    Кликай по клетке нужного здания. Автосборка (без клика) работает только при
+    точном совпадении всего кластера с шаблоном.
+    Оплата идёт сначала из зелёного хранилища (если его зона 5×5 касается
+    хотя бы одной клетки постройки и в нём есть предмет здания), иначе — из
+    инвентаря игрока. Возврат при отмене — тому же плательщику; если плательщик
+    недоступен (склад разобрали), предмет высыпается на землю.
+    Дроны запускают сборку только через хранилище: если дрон достроил точный
+    контур рядом со складом (зона касается), в котором лежит нужное здание —
+    постройка стартует автоматически. Вне зоны склада дроны по-прежнему
+    ничего не запускают.
+    Без ресурса — не строится, а планируется. Контур готов, но ни склад, ни
+    инвентарь не содержат здание: область подсвечивается оранжевым (план), и мод
+    ждёт появления предмета в касающемся хранилище. Под размер подходит несколько
+    зданий — соберётся то, что привезли первым. План снимается, если разобрать
+    каркас. Ручной клик по каркасу работает как раньше: без ресурса — сообщение
+    «не хватает предмета», план не создаётся.
+    Выделение области (маркер, Alt+B или кнопка): протяжка = область
+    постройки. Во время выделения игру рисует циановая рамка штатно; после
+    отпускания, если под размер подходит несколько зданий — рамка остаётся,
+    пока открыто меню выбора. Если в области не хватает блоков — мод напишет,
+    сколько именно. ПКМ маркером снимает подсветку; повторное нажатие
+    Alt+B/кнопки убирает маркер из руки. Одиночный клик маркером = обычный
+    клик по каркасу (с поиском под-прямоугольника в большом поле).
+    Кластер можно выложить «боком» — здание встанет повёрнутым (east).
+    Если здания не хватает в инвентаре, место занято или анимация упала —
+    каркас и оплата остаются/возвращаются, ничего не пропадает.
+
+Установка
+
+Папку multibuild_0.4.0 скопировать в папку модов (%APPDATA%\Factorio\mods
+или ~/.factorio/mods). Имя папки должно совпадать с name_version из info.json.
+Space Age обязателен — без него мод не включится (спрайты лесов берутся из его файлов).
+
+
+
+-- MultiBuild: каркас 1x1 + прозрачное меню + платформенная анимация
+-- + зелёное хранилище с зоной 5x5 (оплата, если зона касается постройки)
+-- + постройка выделением области протяжкой (drag), одиночный клик = клик по каркасу.
+
+local shared = require("shared")
+local platform_anim = require("platform_anim")
+
+local FRAME = shared.FRAME_NAME
+local STORAGE = shared.STORAGE_NAME
+local SELECTOR = shared.SELECTOR_NAME
+local ZONE = shared.STORAGE_ZONE_HALF -- радиус зоны хранилища (2 -> 5x5)
+local COST_FROM_INVENTORY = shared.COST_FROM_INVENTORY
+local POLL_TICKS = shared.PENDING_POLL_TICKS or 20 -- как часто проверять планы (тиков)
+
+-- ===== кэш размеров целевых зданий =====
+local sizes_cache
+local function target_sizes()
+  if sizes_cache then return sizes_cache end
+  sizes_cache = {}
+  for _, name in ipairs(shared.TARGETS) do
+    local proto = prototypes.entity[name]
+    local box = proto and proto.collision_box
+    local w, h
+    if box then
+      local lt = box.left_top or box[1]
+      local rb = box.right_bottom or box[2]
+      if lt and rb then
+        local x1, y1 = (lt.x or lt[1]), (lt.y or lt[2])
+        local x2, y2 = (rb.x or rb[1]), (rb.y or rb[2])
+        w = math.ceil(x2 - x1 - 0.01)
+        h = math.ceil(y2 - y1 - 0.01)
+      end
+    end
+    if w and w > 0 and h and h > 0 then
+      sizes_cache[name] = {w = w, h = h, area = w * h}
+    else
+      log("multibuild: прототип '" .. name .. "' не найден, пропущен")
+    end
+  end
+  return sizes_cache
+end
+
+-- ===== утилиты =====
+local function tile_key(x, y) return x .. ":" .. y end
+
+-- ВАЖНО: в Factorio 2.0+ сущности "flying-text" больше нет.
+local function ftext(surface, position, text, color)
+  for _, player in pairs(game.connected_players) do
+    if player.surface == surface then
+      player.create_local_flying_text{
+        position = position,
+        text = text,
+        color = color or {r = 1, g = 0.85, b = 0.3},
+      }
+    end
+  end
+end
+
+local function flash_light(surface, position, radius, intensity, ttl)
+  pcall(rendering.draw_light, {
+    sprite = "utility/light_medium",
+    target = position,
+    surface = surface,
+    scale = radius,
+    intensity = intensity,
+    color = {r = 0.35, g = 0.8, b = 1},
+    time_to_live = ttl,
+    minimum_darkness = 0.2,
+  })
+end
+
+-- подсветка области "как при наведении на здание": циановая рамка по тайлам
+local function draw_selection_box(surface, rect, color)
+  return rendering.draw_rectangle{
+    color = color or {r = 0.2, g = 0.8, b = 1, a = 0.9},
+    width = 2,
+    filled = false,
+    left_top = {rect.minx, rect.miny},
+    right_bottom = {rect.minx + rect.w, rect.miny + rect.h},
+    surface = surface,
+  }
+end
+
+-- draw_* в 2.x возвращает LuaRenderObject, но на всякий случай принимаем и id
+local function destroy_render(r)
+  if not r then return end
+  if type(r) == "number" then
+    rendering.destroy(r)
+  elseif r.valid then
+    r.destroy(r)
+  end
+end
+
+-- ===== выделение области: состояние =====
+local function clear_selection(player)
+  local sel = storage.sel[player.index]
+  if sel then
+    if sel.render then destroy_render(sel.render) end
+    storage.sel[player.index] = nil
+  end
+end
+
+-- ===== скан кластера блоков (для режима клика по каркасу) =====
+local function cluster_info(surface, tx, ty)
+  local nearby = surface.find_entities_filtered{
+    name = FRAME,
+    position = {tx + 0.5, ty + 0.5},
+    radius = 12,
+  }
+  if #nearby == 0 then return nil end
+
+  local tiles, entities = {}, {}
+  for _, e in pairs(nearby) do
+    local ex, ey = math.floor(e.position.x), math.floor(e.position.y)
+    tiles[tile_key(ex, ey)] = true
+    entities[tile_key(ex, ey)] = e
+  end
+  if not tiles[tile_key(tx, ty)] then
+    local f = nearby[1]
+    tx, ty = math.floor(f.position.x), math.floor(f.position.y)
+  end
+
+  local cluster, seen, stack = {}, {}, {tile_key(tx, ty)}
+  while #stack > 0 do
+    local k = table.remove(stack)
+    if tiles[k] and not seen[k] then
+      seen[k] = true
+      local xs, ys = string.match(k, "^(-?%d+):(-?%d+)$")
+      local x, y = tonumber(xs), tonumber(ys)
+      cluster[#cluster + 1] = {tx = x, ty = y}
+      stack[#stack + 1] = tile_key(x + 1, y)
+      stack[#stack + 1] = tile_key(x - 1, y)
+      stack[#stack + 1] = tile_key(x, y + 1)
+      stack[#stack + 1] = tile_key(x, y - 1)
+    end
+  end
+
+  local minx, miny, maxx, maxy = math.huge, math.huge, -math.huge, -math.huge
+  for _, t in ipairs(cluster) do
+    if t.tx < minx then minx = t.tx end
+    if t.ty < miny then miny = t.ty end
+    if t.tx > maxx then maxx = t.tx end
+    if t.ty > maxy then maxy = t.ty end
+  end
+  local w, h = maxx - minx + 1, maxy - miny + 1
+  local complete = (w * h == #cluster)
+
+  local candidates = {}
+  if complete then
+    for name, s in pairs(target_sizes()) do
+      if (s.w == w and s.h == h) or (s.w == h and s.h == w) then
+        candidates[#candidates + 1] = name
+      end
+    end
+    table.sort(candidates)
+  end
+
+  return {
+    count = #cluster, w = w, h = h,
+    minx = minx, miny = miny,
+    complete = complete,
+    cluster = cluster, entities = entities,
+    candidates = candidates,
+  }
+end
+
+-- ===== поиск под-прямоугольника внутри большого кластера =====
+local function find_subrect_at(info, ctx_tx, ctx_ty)
+  local sizes = target_sizes()
+  local set = {}
+  for _, t in ipairs(info.cluster) do
+    set[tile_key(t.tx, t.ty)] = true
+  end
+
+  local order = {}
+  for name in pairs(sizes) do order[#order + 1] = name end
+  table.sort(order, function(a, b)
+    return sizes[a].area > sizes[b].area
+  end)
+
+  for _, name in ipairs(order) do
+    local s = sizes[name]
+    local variants = (s.w == s.h) and {{s.w, s.h}} or {{s.w, s.h}, {s.h, s.w}}
+    for _, dims in ipairs(variants) do
+      local fw, fh = dims[1], dims[2]
+      for ox = ctx_tx - fw + 1, ctx_tx do
+        for oy = ctx_ty - fh + 1, ctx_ty do
+          if ox >= info.minx and oy >= info.miny
+            and ox + fw - 1 <= info.minx + info.w - 1
+            and oy + fh - 1 <= info.miny + info.h - 1
+          then
+            local all = true
+            for x = ox, ox + fw - 1 do
+              for y = oy, oy + fh - 1 do
+                if not set[tile_key(x, y)] then
+                  all = false
+                  break
+                end
+              end
+              if not all then break end
+            end
+            if all then
+              return {minx = ox, miny = oy, w = fw, h = fh}
+            end
+          end
+        end
+      end
+    end
+  end
+  return nil
+end
+
+local function subinfo_from(info, rect)
+  local cluster, entities = {}, {}
+  for x = rect.minx, rect.minx + rect.w - 1 do
+    for y = rect.miny, rect.miny + rect.h - 1 do
+      cluster[#cluster + 1] = {tx = x, ty = y}
+      entities[tile_key(x, y)] = info.entities[tile_key(x, y)]
+    end
+  end
+  return {
+    count = rect.w * rect.h,
+    w = rect.w, h = rect.h,
+    minx = rect.minx, miny = rect.miny,
+    complete = true,
+    cluster = cluster, entities = entities,
+  }
+end
+
+local function candidates_for_size(w, h)
+  local c = {}
+  for name, s in pairs(target_sizes()) do
+    if (s.w == w and s.h == h) or (s.w == h and s.h == w) then
+      c[#c + 1] = name
+    end
+  end
+  table.sort(c)
+  return c
+end
+
+-- resolver для режима клика по каркасу: полный кластер или под-прямоугольник
+local function resolve_area(surface, tx, ty)
+  local info = cluster_info(surface, tx, ty)
+  if not info then return nil, nil, nil end
+
+  if info.complete and #info.candidates > 0 then
+    return info, info.candidates, info
+  end
+
+  local rect = find_subrect_at(info, tx, ty)
+  if rect then
+    local subinfo = subinfo_from(info, rect)
+    return subinfo, candidates_for_size(subinfo.w, subinfo.h), info
+  end
+
+  return nil, nil, info
+end
+
+-- ===== область из выделения два-клика =====
+local function rect_info(surface, rect)
+  local cluster, entities, missing = {}, {}, 0
+  for x = rect.minx, rect.minx + rect.w - 1 do
+    for y = rect.miny, rect.miny + rect.h - 1 do
+      cluster[#cluster + 1] = {tx = x, ty = y}
+      local e = surface.find_entity(FRAME, {x + 0.5, y + 0.5})
+      if e then
+        entities[tile_key(x, y)] = e
+      else
+        missing = missing + 1
+      end
+    end
+  end
+  return {
+    count = #cluster,
+    w = rect.w, h = rect.h,
+    minx = rect.minx, miny = rect.miny,
+    complete = (missing == 0),
+    cluster = cluster, entities = entities,
+    missing = missing,
+  }
+end
+
+-- ===== хранилище и оплата =====
+-- Правило оплаты складом: его зона должна КАСАТЬСЯ хотя бы одной клетки
+-- постройки (радиус "впритык": кадр на соседней клетке от склада уже в зоне).
+local function storage_touches(e, rect)
+  local stx, sty = math.floor(e.position.x), math.floor(e.position.y)
+  return rect.minx <= stx + ZONE and rect.miny <= sty + ZONE
+     and rect.minx + rect.w - 1 >= stx - ZONE
+     and rect.miny + rect.h - 1 >= sty - ZONE
+end
+
+-- найти зелёное хранилище, зона которого задевает область постройки
+local function find_paying_storage(surface, rect, target)
+  local area = {
+    {rect.minx - ZONE - 1, rect.miny - ZONE - 1},
+    {rect.minx + rect.w + ZONE + 1, rect.miny + rect.h + ZONE + 1},
+  }
+  for _, e in pairs(surface.find_entities_filtered{name = STORAGE, area = area}) do
+    if storage_touches(e, rect) then
+      local inv = e.get_inventory(defines.inventory.chest)
+      if inv and inv.get_item_count(target) >= 1 then
+        return e, inv
+      end
+    end
+  end
+  return nil
+end
+
+-- ===== зелёные хранилища: видимая зона 5x5 =====
+local ZONE_FILL = {r = 0.3, g = 1.0, b = 0.4, a = 0.05}  -- заливка зоны
+local ZONE_LINE = {r = 0.3, g = 1.0, b = 0.4, a = 0.45}  -- контур зоны
+
+local function track_storage_zone(e)
+  local un = e.unit_number
+  if storage.storages[un] then return end
+  local stx, sty = math.floor(e.position.x), math.floor(e.position.y)
+  local fill = rendering.draw_rectangle{
+    color = ZONE_FILL, filled = true,
+    left_top = {stx - ZONE, sty - ZONE},
+    right_bottom = {stx + ZONE + 1, sty + ZONE + 1},
+    surface = e.surface,
+  }
+  local line = rendering.draw_rectangle{
+    color = ZONE_LINE, width = 2, filled = false,
+    left_top = {stx - ZONE, sty - ZONE},
+    right_bottom = {stx + ZONE + 1, sty + ZONE + 1},
+    surface = e.surface,
+  }
+  storage.storages[un] = {entity = e, fill = fill, line = line}
+end
+
+local function untrack_storage_zone(e)
+  local un = e.unit_number
+  local z = storage.storages[un]
+  if z then
+    destroy_render(z.fill)
+    destroy_render(z.line)
+    storage.storages[un] = nil
+  end
+end
+
+-- подстраховка: склад исчез без события (undo, телепорт, скрипты) — снять зону
+local function sweep_storages()
+  for un, z in pairs(storage.storages) do
+    if not (z.entity and z.entity.valid) then
+      destroy_render(z.fill)
+      destroy_render(z.line)
+      storage.storages[un] = nil
+    end
+  end
+end
+
+-- пересканировать все склады (при обновлении мода по старым сейвам)
+local function rescan_storages()
+  for _, z in pairs(storage.storages) do
+    destroy_render(z.fill)
+    destroy_render(z.line)
+  end
+  storage.storages = {}
+  for _, s in pairs(game.surfaces) do
+    for _, e in pairs(s.find_entities_filtered{name = STORAGE}) do
+      track_storage_zone(e)
+    end
+  end
+end
+
+-- Оплата: сначала хранилище (если зона касается области), потом инвентарь.
+-- Возвращает payer {kind="storage"/"player"/"free", entity/player} или nil.
+local function begin_payment(surface, rect, target, player)
+  if not COST_FROM_INVENTORY then return {kind = "free"} end
+
+  local se, sinv = find_paying_storage(surface, rect, target)
+  if se then
+    sinv.remove({name = target, count = 1})
+    return {kind = "storage", entity = se}
+  end
+
+  if player and player.valid then
+    local inv = player.get_main_inventory()
+    if inv and inv.get_item_count(target) >= 1 then
+      inv.remove({name = target, count = 1})
+      return {kind = "player", player = player}
+    end
+  end
+
+  ftext(surface,
+    {rect.minx + rect.w / 2, rect.miny + rect.h / 2},
+    {"multibuild.need-item", {"entity-name." .. target}},
+    {r = 1, g = 0.35, b = 0.35})
+  return nil
+end
+
+local function end_payment_refund(surface, position, payer, target)
+  if not COST_FROM_INVENTORY or not payer or payer.kind == "free" then return end
+  if payer.kind == "storage" and payer.entity.valid then
+    local inv = payer.entity.get_inventory(defines.inventory.chest)
+    if inv then inv.insert({name = target, count = 1}) return end
+  elseif payer.kind == "player" and payer.player and payer.player.valid then
+    local inv = payer.player.get_main_inventory()
+    if inv then inv.insert({name = target, count = 1}) return end
+  end
+  surface.spill_item_stack{position = position, stack = {name = target, count = 1}, enable_looted = true}
+end
+
+-- ===== работа с каркасом =====
+local function destroy_frames(info)
+  for _, t in ipairs(info.cluster) do
+    local e = info.entities[tile_key(t.tx, t.ty)]
+    if e and e.valid then e.destroy() end
+  end
+end
+
+local function restore_frames(surface, info, force)
+  local lost = 0
+  for _, t in ipairs(info.cluster) do
+    local ok, e = pcall(surface.create_entity, surface, {
+      name = FRAME,
+      position = {t.tx + 0.5, t.ty + 0.5},
+      force = force,
+      raise_built = false, -- иначе наш же on_built зациклится
+    })
+    if not (ok and e) then lost = lost + 1 end
+  end
+  if lost > 0 then -- громко: никаких молчаливых потерь кадров
+    local msg = "MultiBuild: кадров каркаса не вернулось на место: " .. lost
+    log(msg)
+    game.print("[color=red]" .. msg .. "[/color]")
+  end
+end
+
+local function destroy_frames_at(surface, tiles)
+  for _, t in ipairs(tiles) do
+    local e = surface.find_entity(FRAME, {t.tx + 0.5, t.ty + 0.5})
+    if e and e.valid then e.destroy() end
+  end
+end
+
+-- ===== запуск постройки =====
+local function rects_overlap(a, b)
+  return a.minx < b.minx + b.w and b.minx < a.minx + a.w
+     and a.miny < b.miny + b.h and b.miny < a.miny + a.h
+end
+
+local function start_build(surface, target, info, force, player)
+  local s = target_sizes()[target]
+  if not s then return end
+  local direction = defines.direction.north
+  if not (info.w == s.w and info.h == s.h) then direction = defines.direction.east end
+  local cx, cy = info.minx + info.w / 2, info.miny + info.h / 2
+  local rect = {minx = info.minx, miny = info.miny, w = info.w, h = info.h}
+
+  -- на этих клетках уже идёт постройка: не списывать оплату дважды
+  for _, j in pairs(storage.jobs or {}) do
+    if j.surface == surface and j.rect and rects_overlap(rect, j.rect) then
+      return
+    end
+  end
+
+  -- призрачная проверка места
+  destroy_frames(info)
+  local can_place = surface.can_place_entity{name = target, position = {cx, cy}, direction = direction}
+  restore_frames(surface, info, force)
+
+  if not can_place then
+    ftext(surface, {cx, cy}, {"multibuild.blocked"}, {r = 1, g = 0.4, b = 0.4})
+    return
+  end
+
+  -- оплата: хранилище -> инвентарь (rect создан выше)
+  local payer = begin_payment(surface, rect, target, player)
+  if not payer then return end
+
+  -- платформенная анимация, без молчаливых фолбэков
+  local area = {
+    left_top = {x = info.minx, y = info.miny},
+    right_bottom = {x = info.minx + info.w, y = info.miny + info.h},
+  }
+  local up_at, down_at
+  local ok, err = pcall(function()
+    up_at, down_at = platform_anim.play(surface, area, {x = cx, y = cy})
+  end)
+  if not ok then
+    end_payment_refund(surface, {cx, cy}, payer, target)
+    local msg = "MultiBuild: платформенная анимация не запустилась: " .. tostring(err)
+    log(msg)
+    game.print("[color=red]" .. msg .. "[/color]")
+    ftext(surface, {cx, cy}, {"multibuild.anim-failed"}, {r = 1, g = 0.4, b = 0.4})
+    return
+  end
+
+  -- кадры каркаса остаются на месте всю анимацию (уберутся на up_at)
+  storage.jobs[#storage.jobs + 1] = {
+    surface = surface, cx = cx, cy = cy, direction = direction,
+    target = target, force = force,
+    up_at = up_at, down_at = down_at, placed = false,
+    rect = rect,
+    tiles = info.cluster,
+    count = info.count,
+    size = math.max(info.w, info.h),
+    payer = payer,
+    player_index = player and player.index or nil,
+  }
+end
+
+-- ===== запланированные постройки: ждут ресурс, стартуют сами =====
+-- Кадр достроен, но ресурса нет -> план. Как только подходящий предмет здания
+-- появится в касающемся хранилище (или вернётся к игроку) — постройка стартует.
+local PENDING_COLOR = {r = 1.0, g = 0.7, b = 0.2, a = 0.6} -- оранжевый контур плана
+
+local function same_rect(a, b)
+  return a.minx == b.minx and a.miny == b.miny and a.w == b.w and a.h == b.h
+end
+
+local function add_pending(surface, info, candidates, force, player)
+  local rect = {minx = info.minx, miny = info.miny, w = info.w, h = info.h}
+  for _, p in pairs(storage.pendings) do
+    if p.surface == surface and same_rect(p.rect, rect) then return end -- уже запланировано
+  end
+  storage.pendings[#storage.pendings + 1] = {
+    surface = surface, rect = rect, candidates = candidates, force = force,
+    player_index = player and player.index or nil,
+    render = draw_selection_box(surface, rect, PENDING_COLOR),
+  }
+  ftext(surface, {rect.minx + rect.w / 2, rect.miny + rect.h / 2}, {"multibuild.pending"}, {r = 1, g = 0.8, b = 0.35})
+end
+
+local function drop_pending(i)
+  local p = storage.pendings[i]
+  if p and p.render then destroy_render(p.render) end
+  table.remove(storage.pendings, i)
+end
+
+local function poll_pendings()
+  local pendings = storage.pendings
+  for i = #pendings, 1, -1 do
+    local p = pendings[i]
+    if not p.surface.valid then
+      drop_pending(i)
+    else
+      local info = rect_info(p.surface, p.rect)
+      if not info.complete then
+        drop_pending(i) -- каркас разобрали — план отменён
+      else
+        local target
+        for _, name in ipairs(p.candidates) do
+          if find_paying_storage(p.surface, p.rect, name) then
+            target = name
+            break
+          end
+        end
+        if target then
+          local player = p.player_index and game.get_player(p.player_index) or nil
+          drop_pending(i)
+          start_build(p.surface, target, info, p.force, player)
+        end
+      end
+    end
+  end
+end
+
+-- ===== обработчик тика =====
+local function on_tick()
+  platform_anim.on_tick(game.tick)
+
+  local jobs = storage.jobs
+  if not jobs or #jobs == 0 then return end
+  for i = #jobs, 1, -1 do
+    local job = jobs[i]
+    local surface = job.surface
+    if not surface.valid then
+      table.remove(jobs, i)
+    else
+      if not job.placed and game.tick >= job.up_at then
+        job.placed = true
+        destroy_frames_at(surface, job.tiles)
+        if surface.can_place_entity{name = job.target, position = {job.cx, job.cy}, direction = job.direction} then
+          local player = job.player_index and game.get_player(job.player_index) or nil
+          surface.create_entity{
+            name = job.target,
+            position = {job.cx, job.cy},
+            direction = job.direction,
+            force = job.force,
+            raise_built = true,
+            create_build_effect_smoke = false,
+            player = player,
+          }
+        else
+          restore_frames(surface, {cluster = job.tiles}, job.force)
+          job.aborted = "blocked"
+        end
+      end
+      if game.tick >= job.down_at then
+        if job.aborted == "blocked" then
+          -- каркас жив на земле: возвращаем только предмет здания
+          end_payment_refund(surface, {job.cx, job.cy}, job.payer, job.target)
+          ftext(surface, {job.cx, job.cy}, {"multibuild.blocked"}, {r = 1, g = 0.4, b = 0.4})
+        else
+          flash_light(surface, {job.cx, job.cy}, job.size * 1.5, 1, 25)
+          ftext(surface, {job.cx, job.cy - job.size / 2}, {"multibuild.built", {"entity-name." .. job.target}}, {r = 0.4, g = 1, b = 0.5})
+        end
+        table.remove(jobs, i)
+      end
+    end
+  end
+
+  if game.tick % POLL_TICKS == 0 then
+    sweep_storages()
+    poll_pendings()
+  end
+end
+script.on_event(defines.events.on_tick, on_tick)
+
+-- ===== автосборка при достройке контура =====
+local function try_auto_build(e, player)
+  local info = cluster_info(e.surface, math.floor(e.position.x), math.floor(e.position.y))
+  if not (info and info.complete) then return end
+  if #info.candidates == 0 then return end
+
+  local target = (#info.candidates == 1) and info.candidates[1] or nil
+  local storage_payer = target and find_paying_storage(e.surface, info, target)
+  local player_payer = false
+  if target and player then
+    local inv = player.get_main_inventory()
+    player_payer = (inv and inv.get_item_count(target) >= 1) or false
+  end
+
+  if target and (storage_payer or player_payer) then
+    -- ресурс есть прямо сейчас: строим (дроны — только через склад)
+    start_build(e.surface, target, info, e.force, player)
+  elseif player and #info.candidates > 1 then
+    -- игроку нужен выбор — клик по каркасу откроет меню
+    ftext(e.surface, e.position, {"multibuild.auto-hint"}, {r = 0.6, g = 0.9, b = 1})
+  else
+    -- ресурса НЕТ: не строим, а планируем — соберётся само,
+    -- когда здание появится в касающемся зелёном хранилище
+    add_pending(e.surface, info, info.candidates, e.force, player)
+  end
+end
+
+local function on_player_built(event)
+  local e = event.entity
+  if not (e and e.valid) then return end
+  if e.name == STORAGE then
+    track_storage_zone(e)
+    return
+  end
+  if e.name ~= FRAME then return end
+  try_auto_build(e, event.player_index and game.get_player(event.player_index) or nil)
+end
+script.on_event(defines.events.on_built_entity, on_player_built)
+
+local function on_robot_built(event)
+  local e = event.entity
+  if not (e and e.valid) then return end
+  if e.name == STORAGE then
+    track_storage_zone(e)
+    return
+  end
+  if e.name ~= FRAME then return end
+  -- дроны запускают постройку только через склад; без ресурса — планируется
+  try_auto_build(e, nil)
+end
+script.on_event(defines.events.on_robot_built_entity, on_robot_built)
+
+-- склад убрали -> снять подсветку зоны (дублируется sweep_storages)
+local function on_storage_removed(event)
+  local e = event.entity
+  if e and e.valid and e.name == STORAGE then
+    untrack_storage_zone(e)
+  end
+end
+script.on_event(defines.events.on_player_mined_entity, on_storage_removed)
+script.on_event(defines.events.on_robot_mined_entity, on_storage_removed)
+script.on_event(defines.events.on_entity_died, on_storage_removed)
+
+-- ===== GUI: прозрачное меню выбора =====
+local function close_menu(player)
+  local gui = player.gui.screen.mb_menu
+  if gui then gui.destroy() end
+  storage.menus[player.index] = nil
+end
+
+local function open_menu(player, ctx, candidates)
+  close_menu(player)
+  storage.menus[player.index] = ctx
+
+  local frame = player.gui.screen.add{
+    type = "frame",
+    name = "mb_menu",
+    style = "mb_transparent_frame",
+    direction = "vertical",
+  }
+  frame.auto_center = true
+  frame.add{type = "label", caption = {"multibuild.menu-title"}, style = "frame_title"}
+
+  local grid = frame.add{type = "table", column_count = 6}
+  for _, name in ipairs(candidates) do
+    local b = grid.add{
+      type = "sprite-button",
+      sprite = "entity/" .. name,
+      style = "slot_button",
+      tooltip = {"entity-name." .. name},
+    }
+    b.tags = {mb_target = name}
+  end
+
+  if COST_FROM_INVENTORY then
+    frame.add{type = "label", caption = {"multibuild.cost-hint"}}
+  end
+  frame.add{type = "button", name = "mb_menu_close", caption = {"multibuild.menu-close"}}
+  player.opened = frame
+end
+
+-- единый сценарий клика по одной клетке: полный кластер или под-прямоугольник
+local function click_flow(surface, tx, ty, player, force)
+  local build_info, candidates, raw = resolve_area(surface, tx, ty)
+  if not raw then return end
+  local pos = {tx + 0.5, ty + 0.5}
+
+  if not candidates or #candidates == 0 then
+    if raw.complete then
+      ftext(surface, pos, {"multibuild.no-candidate", raw.w, raw.h})
+    else
+      ftext(surface, pos, {"multibuild.not-rectangle", raw.count, raw.w, raw.h})
+    end
+    return
+  end
+  if #candidates == 1 then
+    start_build(surface, candidates[1], build_info, force, player)
+  else
+    open_menu(player, {mode = "frame", surface_index = surface.index, tx = tx, ty = ty}, candidates)
+  end
+end
+
+-- клик по блоку каркаса (режим без инструмента)
+script.on_event(defines.events.on_gui_opened, function(event)
+  local entity = event.entity
+  if not (entity and entity.valid and entity.name == FRAME) then return end
+  local player = game.get_player(event.player_index)
+  if not player then return end
+  player.opened = nil -- не показывать интерфейс "сундука"
+  click_flow(entity.surface, math.floor(entity.position.x), math.floor(entity.position.y), player, entity.force)
+end)
+
+script.on_event(defines.events.on_gui_click, function(event)
+  local el = event.element
+  if not (el and el.valid) then return end
+  local player = game.get_player(event.player_index)
+  if not player then return end
+  if el.name == "mb_menu_close" then
+    close_menu(player)
+    clear_selection(player)
+    return
+  end
+  local target = el.tags and el.tags.mb_target
+  if not target then return end
+
+  local ctx = storage.menus[player.index]
+  close_menu(player)
+  clear_selection(player)
+  if not ctx then return end
+  local surface = game.get_surface(ctx.surface_index)
+  if not surface then return end
+
+  local build_info
+  if ctx.mode == "rect" then
+    build_info = rect_info(surface, ctx.rect)
+    if not build_info.complete then
+      ftext(surface, {ctx.rect.minx + 0.5, ctx.rect.miny + 0.5}, {"multibuild.rect-missing", build_info.missing})
+      return
+    end
+  else
+    build_info = resolve_area(surface, ctx.tx, ctx.ty)
+    if not build_info then
+      ftext(player.surface, player.position, {"multibuild.gone"})
+      return
+    end
+  end
+
+  local s = target_sizes()[target]
+  if not (s and ((s.w == build_info.w and s.h == build_info.h) or (s.w == build_info.h and s.h == build_info.w))) then
+    ftext(player.surface, player.position, {"multibuild.size-mismatch"})
+    return
+  end
+  start_build(surface, target, build_info, player.force, player)
+end)
+
+script.on_event(defines.events.on_gui_closed, function(event)
+  local el = event.element
+  if el and el.valid and el.name == "mb_menu" then
+    el.destroy()
+    storage.menus[event.player_index] = nil
+    local player = game.get_player(event.player_index)
+    if player then clear_selection(player) end
+  end
+end)
+
+-- ===== режим выбора области: выдача/снятие инструмента =====
+local function toggle_area_tool(player)
+  local cs = player.cursor_stack
+  if cs and cs.valid_for_read and cs.name == SELECTOR then
+    cs.clear()
+    clear_selection(player)
+    return
+  end
+  if not player.clear_cursor() then
+    ftext(player.surface, player.position, {"multibuild.cursor-busy"}, {r = 1, g = 0.6, b = 0.4})
+    return
+  end
+  player.cursor_stack.set_stack({name = SELECTOR, count = 1})
+  clear_selection(player)
+end
+
+script.on_event(defines.events.on_lua_shortcut, function(event)
+  if event.prototype_name ~= "mb-area-toggle" then return end
+  local player = game.get_player(event.player_index)
+  if player then toggle_area_tool(player) end
+end)
+
+script.on_event("mb-area-toggle", function(event) -- custom-input хоткей
+  local player = game.get_player(event.player_index)
+  if player then toggle_area_tool(player) end
+end)
+
+-- ===== выделение области протяжкой (drag), как чертежом =====
+-- Рамку во время выделения рисует сама игра (border_color из прототипа).
+
+-- тайлы, накрытые областью выделения
+local function rect_from_area(area)
+  local lt, rb = area.left_top, area.right_bottom
+  local lx, ly = (lt.x or lt[1]), (lt.y or lt[2])
+  local rx, ry = (rb.x or rb[1]), (rb.y or rb[2])
+  if lx > rx then lx, rx = rx, lx end
+  if ly > ry then ly, ry = ry, ly end
+  local minx, miny = math.floor(lx), math.floor(ly)
+  local maxx, maxy = math.ceil(rx) - 1, math.ceil(ry) - 1
+  if maxx < minx then maxx = minx end
+  if maxy < miny then maxy = miny end
+  return {minx = minx, miny = miny, w = maxx - minx + 1, h = maxy - miny + 1}
+end
+
+script.on_event(defines.events.on_player_selected_area, function(event)
+  if event.item ~= SELECTOR then return end
+  local player = game.get_player(event.player_index)
+  if not player then return end
+  local surface = player.surface
+  local rect = rect_from_area(event.area)
+  clear_selection(player)
+
+  -- одиночный клик (область 1x1): обычный сценарий клика по каркасу
+  if rect.w == 1 and rect.h == 1 then
+    click_flow(surface, rect.minx, rect.miny, player, player.force)
+    return
+  end
+
+  -- протяжка: область постройки целиком
+  local info = rect_info(surface, rect)
+  local candidates = candidates_for_size(rect.w, rect.h)
+  if #candidates == 0 then
+    ftext(surface, {rect.minx + rect.w / 2, rect.miny + rect.h / 2}, {"multibuild.no-candidate", rect.w, rect.h})
+    return
+  end
+  if not info.complete then
+    ftext(surface, {rect.minx + rect.w / 2, rect.miny + rect.h / 2}, {"multibuild.rect-missing", info.missing})
+    return
+  end
+
+  if #candidates == 1 then
+    start_build(surface, candidates[1], info, player.force, player)
+  else
+    -- подсветка области висит, пока открыто меню
+    storage.sel[player.index] = {render = draw_selection_box(surface, rect)}
+    open_menu(player, {mode = "rect", surface_index = surface.index, rect = rect}, candidates)
+  end
+end)
+
+-- ПКМ инструментом: отмена выделения
+script.on_event(defines.events.on_player_alt_selected_area, function(event)
+  if event.item ~= SELECTOR then return end
+  local player = game.get_player(event.player_index)
+  if player then clear_selection(player) end
+end)
+
+-- ===== storage =====
+script.on_init(function()
+  storage.jobs = {}
+  storage.menus = {}
+  storage.panim_tasks = {}
+  storage.sel = {}
+  storage.storages = {}
+  storage.pendings = {}
+end)
+script.on_configuration_changed(function()
+  storage.jobs = storage.jobs or {}
+  storage.menus = storage.menus or {}
+  storage.panim_tasks = storage.panim_tasks or {}
+  storage.sel = storage.sel or {}
+  storage.storages = storage.storages or {}
+  storage.pendings = storage.pendings or {}
+  rescan_storages() -- подхватить склады старых сейвов
+end)
+
+
+
+
+-- Этап прототипов: группа предметов, микроблок, зелёное хранилище,
+-- инструмент выбора области, хоткей + кнопка, прозрачный стиль, анимации.
+
+local shared = require("shared")
+local FRAME = shared.FRAME_NAME
+local STORAGE = shared.STORAGE_NAME
+local SELECTOR = shared.SELECTOR_NAME
+
+-- ===== отдельная группа предметов (вкладка в крафте) =====
+data:extend({
+  {
+    type = "item-group",
+    name = "mb-group",
+    icon = "__base__/graphics/icons/steel-chest.png",
+    icon_size = 64,
+    order = "z-mb",
+  },
+  {
+    type = "item-subgroup",
+    name = "multibuild-frames",
+    group = "mb-group",
+    order = "a",
+  },
+})
+
+-- ===== микроблок каркаса 1x1 =====
+local FRAME_TINT = {r = 0.45, g = 0.9, b = 1.0, a = 0.6} -- голубоватый, полупрозрачный:
+                                                          -- каркас читается как «план» постройки
+
+local frame = util.table.deepcopy(data.raw.container["steel-chest"])
+frame.name = FRAME
+frame.localised_name = {"multibuild.frame"}
+frame.minable = {mining_time = 0.2, result = FRAME}
+frame.inventory_size = 1
+frame.order = "a-frame"
+if frame.picture and frame.picture.layers then
+  for _, layer in pairs(frame.picture.layers) do
+    if layer.filename and not layer.draw_as_shadow then
+      layer.tint = FRAME_TINT
+    end
+  end
+end
+
+local frame_item = util.table.deepcopy(data.raw.item["steel-chest"])
+frame_item.name = FRAME
+frame_item.localised_name = {"multibuild.frame"}
+frame_item.place_result = FRAME
+frame_item.subgroup = "multibuild-frames"
+frame_item.order = "a-frame"
+
+local frame_recipe = {
+  type = "recipe",
+  name = FRAME,
+  enabled = true,
+  energy_required = 0.5,
+  ingredients = {{type = "item", name = "iron-plate", amount = 1}},
+  results = {{type = "item", name = FRAME, amount = 2}},
+  subgroup = "multibuild-frames",
+  order = "a-frame",
+  allow_productivity = false,
+}
+
+-- ===== зелёное строительное хранилище (зона покрытия 5x5, см. shared) =====
+local STORAGE_TINT = {r = 0.35, g = 1.0, b = 0.45, a = 1.0}
+
+local storage = util.table.deepcopy(data.raw.container["steel-chest"])
+storage.name = STORAGE
+storage.localised_name = {"multibuild.storage-name"}
+storage.localised_description = {"multibuild.storage-hint"}
+storage.minable = {mining_time = 0.5, result = STORAGE}
+storage.order = "b-storage"
+-- интерфейс сундука остаётся обычным: сюда складывают здания (вручную,
+-- манипуляторами, логистическими дронами)
+if storage.picture and storage.picture.layers then
+  for _, layer in pairs(storage.picture.layers) do
+    if layer.filename and not layer.draw_as_shadow then
+      layer.tint = STORAGE_TINT
+    end
+  end
+end
+
+local storage_item = util.table.deepcopy(data.raw.item["steel-chest"])
+storage_item.name = STORAGE
+storage_item.localised_name = {"multibuild.storage-name"}
+storage_item.localised_description = {"multibuild.storage-hint"}
+storage_item.place_result = STORAGE
+storage_item.subgroup = "multibuild-frames"
+storage_item.order = "b-storage"
+
+local storage_recipe = {
+  type = "recipe",
+  name = STORAGE,
+  enabled = true,
+  energy_required = 1,
+  ingredients = {
+    {type = "item", name = "steel-chest", amount = 1},
+    {type = "item", name = "iron-plate", amount = 10},
+  },
+  results = {{type = "item", name = STORAGE, amount = 1}},
+  subgroup = "multibuild-frames",
+  order = "b-storage",
+  allow_productivity = false,
+}
+
+-- ===== инструмент выбора области постройки =====
+local selector = {
+  type = "selection-tool",
+  name = SELECTOR,
+  localised_name = {"multibuild.area-selector"},
+  localised_description = {"multibuild.area-selector-desc"},
+  icon = "__base__/graphics/icons/blueprint.png",
+  icon_size = 64,
+  flags = {"only-in-cursor", "not-stackable", "spawnable"},
+  subgroup = "multibuild-frames",
+  order = "c-selector",
+  stack_size = 1,
+  draw_label_for_cursor_render = true,
+  select = {
+    border_color = {r = 0.2, g = 0.85, b = 1.0, a = 1.0},
+    cursor_box_type = "entity",
+    mode = {"any-tile", "any-entity"},
+  },
+  alt_select = {          -- ПКМ: отмена выделения
+    border_color = {r = 1.0, g = 0.4, b = 0.4, a = 1.0},
+    cursor_box_type = "not-allowed",
+    mode = {"nothing"},
+  },
+}
+
+local selector_recipe = {
+  type = "recipe",
+  name = SELECTOR,
+  enabled = true,
+  energy_required = 0.5,
+  ingredients = {{type = "item", name = "iron-plate", amount = 1}},
+  results = {{type = "item", name = SELECTOR, amount = 1}},
+  subgroup = "multibuild-frames",
+  order = "c-selector",
+  allow_productivity = false,
+}
+
+-- кнопка в шорткат-панели + хоткей для выдачи инструмента
+local shortcut = {
+  type = "shortcut",
+  name = "mb-area-toggle",
+  action = "lua",
+  order = "z-mb",
+  localised_name = {"multibuild.shortcut-area"},
+  localised_description = {"multibuild.area-selector-desc"},
+  icon = "__base__/graphics/icons/blueprint.png",
+  icon_size = 64,
+  small_icon = "__base__/graphics/icons/blueprint.png",
+  small_icon_size = 64,
+  disabled_icon = "__base__/graphics/icons/blueprint.png",
+  disabled_small_icon = "__base__/graphics/icons/blueprint.png",
+}
+
+local hotkey = {
+  type = "custom-input",
+  name = "mb-area-toggle",
+  key_sequence = "ALT + B",
+}
+
+data:extend({
+  frame, frame_item, frame_recipe,
+  storage, storage_item, storage_recipe,
+  selector, selector_recipe,
+  shortcut, hotkey,
+})
+
+-- ===== полупрозрачный стиль окна меню выбора здания =====
+local gui_style = data.raw["gui-style"]["default"]
+gui_style.mb_transparent_frame = {
+  type = "frame_style",
+  parent = "frame",
+  graphical_set = {
+    base = {
+      filename = "__core__/graphics/gui-new.png",
+      position = {0, 0},
+      corner_size = 8,
+      opacity = 0.75, -- меньше = прозрачнее (0..1)
+    },
+  },
+}
+
+-- =====================================================================
+-- Анимация строительных лесов космической платформы.
+-- Спрайты ссылаются на файлы основной игры (Space Age = обязательная зависимость),
+-- структура анимаций — из мода Quezler "Space platform entity build animation lib" (MIT):
+-- https://github.com/Quezler/glutenfree/tree/main/mods_2.0/109_space-platform-entity-build-animation-lib
+-- =====================================================================
+local function any_feature_flag_enabled()
+  for _, boolean in pairs(feature_flags) do
+    if boolean then return true end
+  end
+  return false
+end
+local flags_ok = any_feature_flag_enabled()
+
+-- Файл лежит в КОРНЕ мода, require относительный — не зависит от имени мода.
+-- require без pcall специально: если файл/спрайты не найдутся, игра сразу
+-- покажет понятную ошибку загрузки вместо тихой деградации.
+local panim = require("entity-build-animations")
+local panim_count = 0
+for corner, animations in pairs(panim) do
+  for name, animation in pairs(animations) do
+    animation.type = "animation"
+    animation.name = "mb-panim-" .. corner .. "-" .. name
+    if not flags_ok then
+      -- без feature-флагов: регистрируем невидимыми (как в оригинальной библиотеке)
+      for _, layer in ipairs(animation.layers) do
+        layer.tint = {0, 0, 0, 0}
+      end
+    end
+    data:extend{animation}
+    panim_count = panim_count + 1
+  end
+end
+-- контрольная точка: эта строка ДОЛЖНА быть в factorio-current.log при запуске.
+log("multibuild: анимаций лесов зарегистрировано: " .. panim_count)
+
+
+
+-- Анимация строительных лесов космической платформы.
+-- Спрайты берутся НАПРЯМУЮ из Space Age (наш мод не таскает графику с собой).
+-- Параметры кадров (width/height/shift/line_length) совпадают с helper-файлами SA,
+-- структура таблиц — из мода Quezler "Space platform entity build animation lib" (MIT).
+--
+-- ВНИМАНИЕ: если после очередного обновления SA игра не найдёт PNG по этим путям,
+-- поправь DIR ниже (точный путь виден в папке Factorio/data/space-age/graphics/...).
+
+local DIR = "__space-age__/graphics/entity/space-platform-build-anim/"
+
+local frame_count = 32
+local scale = 0.5
+local animation_speed = 0.5
+local px = util.by_pixel
+
+local function layer(name, width, height, shift, extra)
+  local l = {
+    filename = DIR .. name .. ".png",
+    width = width,
+    height = height,
+    shift = shift,
+    line_length = 8,
+    frame_count = frame_count,
+    scale = scale,
+    animation_speed = animation_speed,
+  }
+  for k, v in pairs(extra or {}) do
+    l[k] = v
+  end
+  return l
+end
+
+local animations = {
+  back_left = {
+    top = {
+      layers = {
+        layer("back-L-top", 76, 96, px(-3.0, -30.0)),
+      },
+    },
+    body = {
+      layers = {
+        layer("back-L", 78, 146, px(-3.0, -17.5)),
+        layer("back-L-shadow", 188, 84, px(28.5, 0.5), {draw_as_shadow = true}),
+      },
+    },
+  },
+  back_right = {
+    top = {
+      layers = {
+        layer("back-R-top", 78, 96, px(3.0, -30.0)),
+      },
+    },
+    body = {
+      layers = {
+        layer("back-R", 78, 146, px(3.0, -17.5)),
+        layer("back-R-shadow", 174, 84, px(26.0, 0.5), {draw_as_shadow = true}),
+      },
+    },
+  },
+  front_left = {
+    top = {
+      layers = {
+        layer("front-L-top", 76, 108, px(-3.0, -31.5)),
+      },
+    },
+    body = {
+      layers = {
+        layer("front-L", 78, 164, px(-3.0, -18.0)),
+        layer("front-L-shadow", 176, 88, px(25.5, 1.0), {draw_as_shadow = true}),
+      },
+    },
+  },
+  front_right = {
+    top = {
+      layers = {
+        layer("front-R-top", 78, 108, px(3.0, -31.5)),
+      },
+    },
+    body = {
+      layers = {
+        layer("front-R", 78, 164, px(3.0, -17.5)),
+        layer("front-R-shadow", 172, 88, px(25.5, 1.0), {draw_as_shadow = true}),
+      },
+    },
+  },
+}
+
+return animations
+
+
+
+
+-- Анимация строительных лесов космической платформы.
+-- Порт мода Quezler "Space platform entity build animation lib" (лицензия MIT).
+-- Источник: https://github.com/Quezler/glutenfree/tree/main/mods_2.0/109_space-platform-entity-build-animation-lib
+--
+-- Как это работает: на каждый тайл площадки рисуется пара draw_animation
+-- (верх лесов + тело с тенью), подъём каждого тайла задержан на манхэттенское
+-- расстояние от центра * FRAMES_BETWEEN_BUILDING. Леса замирают на 16-м кадре,
+-- а через remove_scaffold_delay проигрываются кадры 16..32 (опускание).
+
+local ANIM_PREFIX = "mb-panim-" -- префикс зарегистрированных в data.lua анимаций
+
+local TICKS_PER_FRAME = 2
+local FRAMES_BETWEEN_BUILDING = 8 * 2
+local FRAMES_BETWEEN_REMOVING = 4
+
+local M = {}
+
+local function add_task(tick, task)
+  storage.panim_tasks = storage.panim_tasks or {}
+  local tasks = storage.panim_tasks[tick]
+  if tasks then
+    tasks[#tasks + 1] = task
+  else
+    storage.panim_tasks[tick] = {task}
+  end
+end
+
+local function get_tilebox(area)
+  local left_top = {x = math.floor(area.left_top.x), y = math.floor(area.left_top.y)}
+  local right_bottom = {x = math.ceil(area.right_bottom.x), y = math.ceil(area.right_bottom.y)}
+  local positions = {}
+  for y = left_top.y, right_bottom.y - 1 do
+    for x = left_top.x, right_bottom.x - 1 do
+      positions[#positions + 1] = {x = x, y = y}
+    end
+  end
+  return positions
+end
+
+-- какая угловая часть лесов стоит на данном тайле (position ожидается с .5)
+local function get_piece(position, center)
+  if position.x > center.x then
+    return position.y < center.y and "back_right" or "front_right"
+  else
+    return position.y < center.y and "back_left" or "front_left"
+  end
+end
+
+local function is_back_piece(piece)
+  return piece == "back_left" or piece == "back_right"
+end
+
+local function get_manhattan_distance(position, center)
+  return math.abs(position.x - center.x) + math.abs(position.y - center.y)
+end
+
+local function get_build_sound_path(area)
+  local w = area.right_bottom.x - area.left_top.x
+  local h = area.right_bottom.y - area.left_top.y
+  local s = w * h
+  local uc = prototypes.utility_constants
+  if s < uc.small_area_size then return "utility/build_animated_small" end
+  if s < uc.medium_area_size then return "utility/build_animated_medium" end
+  if s < uc.large_area_size then return "utility/build_animated_large" end
+  return "utility/build_animated_huge"
+end
+
+-- Запускает анимацию лесов над областью area на surface (center — точка внутри).
+-- Возвращает up_at, down_at: тики, когда леса полностью подняты и полностью опущены.
+function M.play(surface, area, center)
+  -- позиция может прийти массивом {x, y} — нормализуем в {x=, y=}
+  if center[1] then center = {x = center[1], y = center[2]} end
+  local tick = game.tick
+  local top_render_layer = "higher-object-above"
+
+  -- звук постройки как у платформы (pcall — если в версии игры звука нет)
+  pcall(surface.play_sound, surface, {path = get_build_sound_path(area), position = center})
+
+  local tilebox = get_tilebox(area)
+  local largest = 0
+  for _, tile in ipairs(tilebox) do
+    tile.center = {x = tile.x + 0.5, y = tile.y + 0.5}
+    tile.manhattan = math.ceil(get_manhattan_distance(tile.center, center))
+    if tile.manhattan > largest then largest = tile.manhattan end
+  end
+
+  local remove_scaffold_delay = (largest + 4) * FRAMES_BETWEEN_BUILDING
+  local up_at = tick + 1 + largest * FRAMES_BETWEEN_BUILDING + 15 * TICKS_PER_FRAME
+  local down_at = tick + 1 + largest * FRAMES_BETWEEN_REMOVING + remove_scaffold_delay + 16 * TICKS_PER_FRAME
+
+  for _, tile in ipairs(tilebox) do
+    local piece = get_piece(tile.center, center)
+    local animations = {} -- {top, body}
+
+    local up_base = tick + 1 + tile.manhattan * FRAMES_BETWEEN_BUILDING
+    add_task(up_base + 0 * TICKS_PER_FRAME, {name = "start", animations = animations})
+    add_task(up_base + 15 * TICKS_PER_FRAME, {name = "pause", offset = 15, animations = animations})
+
+    local down_base = tick + 1 + tile.manhattan * FRAMES_BETWEEN_REMOVING + remove_scaffold_delay
+    add_task(down_base + 0 * TICKS_PER_FRAME, {name = "unpause", offset = 16, animations = animations})
+
+    local ttl = down_base - tick + 16 * TICKS_PER_FRAME
+
+    animations[1] = rendering.draw_animation{
+      target = tile.center,
+      surface = surface,
+      animation = ANIM_PREFIX .. piece .. "-top",
+      time_to_live = ttl,
+      animation_offset = 0,
+      animation_speed = 0,
+      render_layer = top_render_layer,
+      visible = false,
+    }
+    animations[2] = rendering.draw_animation{
+      target = tile.center,
+      surface = surface,
+      animation = ANIM_PREFIX .. piece .. "-body",
+      time_to_live = ttl,
+      animation_offset = 0,
+      animation_speed = 0,
+      render_layer = is_back_piece(piece) and "lower-object-above-shadow" or "object",
+      visible = false,
+    }
+  end
+
+  return up_at, down_at
+end
+
+-- Вызывать каждый тик: двигает плеер анимации (start/pause/unpause по расписанию).
+function M.on_tick(tick)
+  local storage_tasks = storage.panim_tasks
+  local tasks = storage_tasks and storage_tasks[tick]
+  if not tasks then return end
+  storage_tasks[tick] = nil
+  for _, task in ipairs(tasks) do
+    local a1, a2 = task.animations[1], task.animations[2]
+    if a1.valid and a2.valid then
+      if task.name == "start" then
+        local offset = -(tick * 0.5) % 32
+        a1.visible = true; a2.visible = true
+        a1.animation_speed = 1; a2.animation_speed = 1
+        a1.animation_offset = offset; a2.animation_offset = offset
+      elseif task.name == "pause" then
+        a1.animation_speed = 0; a2.animation_speed = 0
+        a1.animation_offset = task.offset; a2.animation_offset = task.offset
+      elseif task.name == "unpause" then
+        local offset = -(tick * 0.5) % 32
+        a1.animation_speed = 1; a2.animation_speed = 1
+        a1.animation_offset = offset + task.offset
+        a2.animation_offset = offset + task.offset
+      end
+    end
+  end
+end
+
+return M
+
+
+
+-- Общая конфигурация: используется и на этапе прототипов (data.lua),
+-- и в рантайме (control.lua).
+
+local FRAME_NAME = "mb-frame"          -- универсальный микроблок 1x1
+local STORAGE_NAME = "mb-storage"      -- зелёное строительное хранилище
+local SELECTOR_NAME = "mb-area-selector" -- инструмент выбора области постройки
+
+-- Зона хранилища: квадрат со стороной (2*ZONE_HALF+1) вокруг него.
+-- ZONE_HALF = 2 -> покрытие 5x5.
+local STORAGE_ZONE_HALF = 2
+
+local COST_FROM_INVENTORY = true -- true: сборка списывает 1 предмет здания
+                                  -- сначала с хранилища (если его зона покрывает
+                                  -- область постройки), иначе с инвентаря игрока.
+
+-- Как часто (в тиках) проверять запланированные постройки — те, что ждут ресурс.
+local PENDING_POLL_TICKS = 20
+
+-- Здания, которые можно ставить из каркаса.
+-- Отсутствующие в игре (например, без Space Age) просто пропускаются.
+local TARGETS = {
+  "assembling-machine-1",
+  "assembling-machine-2",
+  "assembling-machine-3",
+  "stone-furnace",
+  "steel-furnace",
+  "electric-furnace",
+  "chemical-plant",
+  "oil-refinery",
+  "centrifuge",
+  "lab",
+  "beacon",
+  "roboport",
+  "rocket-silo",
+  -- Space Age:
+  "biochamber",
+  "electromagnetic-plant",
+  "foundry",
+  "cryogenic-plant",
+  "recycler",
+  "big-mining-drill",
+  "agricultural-tower",
+}
+
+return {
+  FRAME_NAME = FRAME_NAME,
+  STORAGE_NAME = STORAGE_NAME,
+  SELECTOR_NAME = SELECTOR_NAME,
+  STORAGE_ZONE_HALF = STORAGE_ZONE_HALF,
+  COST_FROM_INVENTORY = COST_FROM_INVENTORY,
+  PENDING_POLL_TICKS = PENDING_POLL_TICKS,
+  TARGETS = TARGETS,
+}

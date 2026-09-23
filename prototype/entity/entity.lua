@@ -1,7 +1,12 @@
-local hit_effects = require("__base__.prototypes.entity.hit-effects")
-local item_sounds = require("__base__.prototypes.item_sounds")
-local sounds = require("__base__.prototypes.entity.sounds")
+
+
 require ("util")
+local hit_effects = require("__base__.prototypes.entity.hit-effects")
+local sounds = require("__base__.prototypes.entity.sounds")
+local hit_effects = require("__base__.prototypes.entity.hit-effects")
+local sounds = require("__base__.prototypes.entity.sounds")
+local space_age_sounds = require ("__space-age__.prototypes.entity.sounds")
+require ("prototype.graphics.optickabile")
 
 local q = "__paln-b-test__"
 local a_speed = 1
@@ -237,7 +242,8 @@ spase_asm2_it.place_result = spase_asm2_it.name
 spase_asm2_it.subgroup = "space-platform"
 data:extend({spase_asm2_it})
 
-local a = -10
+local a = -8
+local c = 2
 local spase_asm2 = table.deepcopy(data.raw["assembling-machine"]["assembling-machine-3"])
 spase_asm2.name = spase_asm2_it.name
 spase_asm2.graphics_set = {
@@ -249,14 +255,14 @@ spase_asm2.graphics_set = {
           frame_count = 1,
           repeat_count = 64,
           scale = 0.5,
-          shift = util.by_pixel(0, a),
+          shift = util.by_pixel(0 + c, a),
         }),
         util.sprite_load(q .. "/graphics/entity/assembling-machine-3-anim",
         {
           priority = "high",
           frame_count = 64,
           scale = 0.5,
-          shift = util.by_pixel(0, a),
+          shift = util.by_pixel(0 + c, a),
         }),
         {
           filename = q .. "/graphics/entity/sa111.png",
@@ -267,7 +273,7 @@ spase_asm2.graphics_set = {
           width = 300,
           height = 300,
           draw_as_shadow = true,
-          shift = util.by_pixel(10 ,5 + a ),
+          shift = util.by_pixel(10 + c,5 + a ),
         },
         {
           filename = q .. "/graphics/entity/sa1234.png",
@@ -277,11 +283,23 @@ spase_asm2.graphics_set = {
           scale = 0.5,
           width = 253,
           height = 275,
-          shift = util.by_pixel(-5 ,-3 + a),
+          shift = util.by_pixel(-7 + c,-3 + a),
         }
       }
     }
   }
+spase_asm2.fluid_boxes = {{
+  --pipe_covers = pipecoverspictures(),
+  production_type = "input",
+  volume = 200,
+  pipe_connections = {
+    { flow_direction = "input", direction = defines.direction.west,  position = { -1, 0 },connection_category = "cable"},
+    { flow_direction = "input", direction = defines.direction.east,  position = { 1, 0 }, connection_category = "cable"},
+    { flow_direction = "input", direction = defines.direction.north, position = { 0, -1 },connection_category = "cable"},
+    { flow_direction = "input", direction = defines.direction.south, position = { 0, 1 }, connection_category = "cable"},
+  },
+  secondary_draw_orders = { north = -1, }
+}}
 
 data:extend({spase_asm2})
 
@@ -311,12 +329,12 @@ ssc_turbine.max_power_output = "5MW"
 ssc_turbine.energy_source = { type = "electric", usage_priority = "secondary-output" }
 ssc_turbine.fluid_box = {
   volume = 200,
-  pipe_covers = pipecoverspictures(),
+  pipe_covers =  pipe_connectors,
   pipe_connections = {
-        { direction = defines.direction.east,  position =  {1.5, -0.5 },},
-        { direction = defines.direction.west,  position =  {-1.5, 0.5 },},
-        { direction = defines.direction.south, position = { 0.5, 1.5 }, },
-        { direction = defines.direction.north, position = {-0.5,-1.5 }, },
+        { direction = defines.direction.east,  position =  { 1.5, -1.5 },},
+        { direction = defines.direction.west,  position =  { -1.5, 1.5 },},
+        { direction = defines.direction.west,  position =  { -1.5, -1.5},},
+        { direction = defines.direction.east,  position =  {  1.5, 1.5 },},
       },
   production_type = "input",
   filter = "steam",
@@ -457,6 +475,7 @@ if spase_ground_it then data:extend({spase_ground_it}) end
 local spase_ground = clone_entity("tile", "space-platform-for-ground", "sheathing-ground",
     {
         layer_group = "ground",
+        minable = {mining_time = 0.1, result = "sheathing-ground"},
     },
     {
         "surface_conditions",
@@ -475,13 +494,158 @@ end
 --})
 
 
+--cable
 
 
-  --collision_mask = {
-  --    layers = {
-  --        item = true,      -- Конфликтует с предметами на земле
-  --        object = true,    -- Конфликтует с другими зданиями
-  --        player = true,    -- Игрок не может пройти сквозь него
-  --        -- water_tile = true -- вода
-  --    }
-  --}
+local cable_it = table.deepcopy(data.raw["item"]["pipe"])
+cable_it.name = "cable1"
+cable_it.icon = q .."/graphics/icon/optical-fiber.png"
+cable_it.place_result = cable_it.name
+cable_it.subgroup = "space-platform"
+cable_it.order = "q[" .. cable_it.name .. "]"
+data:extend({cable_it})
+
+data:extend({
+  {
+    type = "corpse",
+    name = "calfiber-remnants",
+    icon = q .."/graphics/icon/optical-fiber.png",
+    flags = {"placeable-neutral", "not-on-map"},
+    hidden_in_factoriopedia = true,
+    subgroup = "energy-pipe-distribution-remnants",
+    order = "a-d-a",
+    collision_box = {{-0.1, -0.1}, {0.1, 0.1}},
+    selection_box = {{-0.4, -0.4}, {0.4, 0.4}},
+    selectable_in_game = false,
+    time_before_removed = 60 * 60 * 15, -- 15 minutes
+    expires = false,
+    final_render_layer = "remnants",
+    remove_on_tile_placement = false,
+    animation = make_rotated_animation_variations_from_sheet(2,
+    {
+      filename = q .."/graphics/entity/opticalfiber/remnants/opticalfiber-remnants.png",
+      width = 122,
+      height = 120,
+      line_length = 1,
+      direction_count = 2,
+      shift = util.by_pixel(1.5, 2.5), -- -0,5
+      scale = 0.5
+    })
+  },
+
+  {
+    type = "pipe",
+    name = cable_it.name,
+    icon = q .."/graphics/icon/optical-fiber.png",
+    flags = {"placeable-neutral", "player-creation"},
+    minable = {mining_time = 0.1, result = cable_it.name},
+    max_health = 10,
+    corpse = "calfiber-remnants",
+    dying_explosion = "pipe-explosion",
+    icon_draw_specification = {scale = 0},
+    resistances = {
+      {
+        type = "fire",
+        percent = 30
+      },
+      {
+        type = "impact",
+        percent = 50
+      }
+    },
+    fast_replaceable_group = "cable",
+    collision_box = {{-0.1, -0.1}, {0.1, 0.1}},
+    selection_box = {{-0.4, -0.4}, {0.4, 0.4}},
+    damaged_trigger_effect = hit_effects.entity(),
+    fluid_box =
+    {
+      draw_only_when_connected = true,
+      hide_connection_info = true,
+      volume = 10,
+      pipe_covers = opticalfibercoverspictures(), -- in case a real pipe is connected to a ghost
+      pipe_connections =
+      {
+        { direction = defines.direction.north, position = {0, 0}, connection_category = "cable", hide_connection_info = true},
+        { direction = defines.direction.east,  position = {0, 0}, connection_category = "cable", hide_connection_info = true},
+        { direction = defines.direction.south, position = {0, 0}, connection_category = "cable", hide_connection_info = true},
+        { direction = defines.direction.west,  position = {0, 0}, connection_category = "cable", hide_connection_info = true}
+      },
+      max_pipeline_extent = 1000000000,
+    },
+    impact_category = "glass",
+    pictures = opticalfiberpictures(),
+    working_sound = sounds.pipe,
+    open_sound = sounds.metal_small_open,
+    close_sound = sounds.metal_small_close,
+
+    horizontal_window_bounding_box = {{-0.25, -0.28125}, {0.25, 0.15625}},
+    vertical_window_bounding_box = {{-0.28125, -0.5}, {0.03125, 0.125}}
+  },
+})
+
+
+
+
+
+
+
+
+-- ==========================================================
+-- ШАГ 1: Создаем новый тайл лавы на основе оригинальной
+-- ==========================================================
+local base_lava = data.raw["tile"]["lava"]
+local empty_space = data.raw["tile"]["out-of-map"] or data.raw["tile"]["empty-space"]
+
+if base_lava and empty_space then
+    -- Делаем полную копию лавы
+    local new_lava = table.deepcopy(base_lava)
+    
+    -- Задаем новое имя
+    new_lava.name = "new-lava"
+    
+    -- Копируем маску коллизий пустоты (САМОЕ ГЛАВНОЕ ДЛЯ РАЗМЕЩЕНИЯ ОБШИВКИ)
+    new_lava.collision_mask = table.deepcopy(empty_space.collision_mask)
+    
+    -- Делаем недобываемой и непроходимой (как пустота)
+    new_lava.minable = nil
+    new_lava.walkable = false
+    
+    -- Добавляем новый тайл в игру
+    data:extend({new_lava})
+end
+
+
+-- ==========================================================
+-- ШАГ 2: Учим обшивку рисоваться рядом с новой лавой
+-- ==========================================================
+local plating = data.raw["tile"]["space-platform-foundation"]
+
+if plating and plating.transitions then
+    for _, transition_group in pairs(plating.transitions) do
+        if transition_group.to_tiles then
+            -- Ищем переходы, которые обшивка делает к пустоте
+            local is_void_transition = false
+            for _, to_tile in ipairs(transition_group.to_tiles) do
+                if to_tile == "out-of-map" or to_tile == "empty-space" then
+                    is_void_transition = true
+                    break
+                end
+            end
+            
+            -- Добавляем нашу лаву в этот же список переходов
+            if is_void_transition then
+                table.insert(transition_group.to_tiles, "new-lava")
+            end
+        end
+    end
+end
+
+
+-- ==========================================================
+-- ШАГ 3: Разрешаем класть обшивку на планетах (а не только в космосе)
+-- ==========================================================
+local plating_item = data.raw["item"]["space-platform-foundation"]
+if plating_item then
+    -- Удаляем ограничение на гравитацию/поверхность
+    plating_item.surface_conditions = nil
+end

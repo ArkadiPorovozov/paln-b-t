@@ -7,6 +7,8 @@
 
 
 require("prototype.entity.entity")
+require("prototype.entity.rock")
+--require("prototype.entity.planet-logistics")
 require("prototype.item.item")
 
 require("prototype.planet.map-gen")
@@ -14,14 +16,6 @@ require("prototype.planet.planet")
 require("prototype.planet.noise-data")
 --require("prototype.ore.ore-1")
 
+--require("data-a")
 
-
---require("data-fly")
-
-
-
-
-
-
-
-
+require("penis2")

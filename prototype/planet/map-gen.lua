@@ -35,10 +35,10 @@ planet_map_gen.p1 = function()
         ["tile:volcanic-folds:richness"] = "const_zero",
         ["tile:volcanic-cracks:richness"] = "const_zero",
         ["tile:volcanic-folds-flat:richness"] = "const_zero",
-      ["tile:wetland-dead-skin:probability"]   = "dead_skin_prob",
-      ["tile:volcanic-folds-flat:probability"] = "volcanic_folds_flat_prob",
-      ["tile:volcanic-cracks:probability"]     = "volcanic_cracks_prob",
-      ["tile:volcanic-folds:probability"]      = "volcanic_folds_prob",
+        ["tile:wetland-dead-skin:probability"]   = "dead_skin_prob",
+        ["tile:volcanic-folds-flat:probability"] = "volcanic_folds_flat_prob",
+        ["tile:volcanic-cracks:probability"]     = "volcanic_cracks_prob",
+        ["tile:volcanic-folds:probability"]      = "volcanic_folds_prob",
       --["tile:refined-concrete:probability"] = ""
     },
     autoplace_settings =

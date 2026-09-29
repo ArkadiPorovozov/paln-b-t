@@ -1,9 +1,8 @@
--- Этап прототипов: группа предметов, микроблок каркаса 1x1, зелёный фрейм-сундук запроса,
+-- Этап прототипов: группа предметов, микроблок каркаса 1x1,
 -- сущности плана для каждого здания (автогенерация), инструмент выбора, анимации.
 
 local shared = require("shared")
 local FRAME = shared.FRAME_NAME
-local STORAGE = shared.STORAGE_NAME
 local SELECTOR = shared.SELECTOR_NAME
 
 -- ===== отдельная группа предметов (вкладка в крафте) =====
@@ -11,7 +10,7 @@ data:extend({
   {
     type = "item-group",
     name = "mb-group",
-    icon = "__base__/graphics/icons/steel-chest.png",
+    icon = "__base__/graphics/icons/requester-chest.png",
     icon_size = 64,
     order = "z-mb",
     localised_name = {"multibuild.item-group"},
@@ -29,8 +28,6 @@ data:extend({
 local base_requester = data.raw["logistic-container"] and data.raw["logistic-container"]["requester-chest"]
 
 -- ===== микроблок каркаса 1x1 (logistic-container requester с 1 слотом) =====
-local FRAME_TINT = {r = 0.45, g = 0.9, b = 1.0, a = 0.6} -- голубоватый, полупрозрачный
-
 local frame
 if base_requester then
   frame = util.table.deepcopy(base_requester)
@@ -51,25 +48,39 @@ frame.allow_copy_paste = true
 -- Поддержка копирования настроек (Shift+ПКМ -> Shift+ЛКМ)
 frame.additional_pastable_entities = {FRAME}
 
-if frame.animation then
-  if frame.animation.layers then
-    for _, layer in pairs(frame.animation.layers) do
-      if not layer.draw_as_shadow then
-        layer.tint = FRAME_TINT
-      end
-    end
-  else
-    frame.animation.tint = FRAME_TINT
-  end
-elseif frame.picture and frame.picture.layers then
-  for _, layer in pairs(frame.picture.layers) do
-    if not layer.draw_as_shadow then
-      layer.tint = FRAME_TINT
-    end
-  end
-end
+-- Полноценная текстура синего сундука запроса (requester chest) из игры
+local blue_chest_sprite = {
+  layers = {
+    {
+      filename = "__base__/graphics/entity/logistic-chest/requester-chest.png",
+      priority = "extra-high",
+      width = 66,
+      height = 74,
+      shift = util.by_pixel(0, -2),
+      scale = 0.5,
+    },
+    {
+      filename = "__base__/graphics/entity/logistic-chest/logistic-chest-shadow.png",
+      priority = "extra-high",
+      width = 112,
+      height = 46,
+      shift = util.by_pixel(12, 4),
+      scale = 0.5,
+      draw_as_shadow = true,
+    }
+  }
+}
 
-local frame_item = util.table.deepcopy(data.raw.item["steel-chest"])
+frame.picture = blue_chest_sprite
+frame.animation = nil
+frame.robot_door = nil
+frame.landing_location_offset = nil
+frame.opened_duration = nil
+frame.animation_sound = nil
+
+local frame_item = util.table.deepcopy(data.raw.item["requester-chest"] or data.raw.item["steel-chest"])
+frame_item.icon = "__base__/graphics/icons/requester-chest.png"
+frame_item.icon_size = 64
 frame_item.name = FRAME
 frame_item.localised_name = {"multibuild.frame"}
 frame_item.place_result = FRAME
@@ -85,74 +96,6 @@ local frame_recipe = {
   results = {{type = "item", name = FRAME, amount = 2}},
   subgroup = "multibuild-frames",
   order = "a-frame",
-  allow_productivity = false,
-}
-
--- ===== 2-й зелёный фрейм: сундук запроса для дронов (без разгрузки дронами) =====
-local STORAGE_TINT = {r = 0.35, g = 1.0, b = 0.45, a = 1.0}
-
-local storage
-if base_requester then
-  storage = util.table.deepcopy(base_requester)
-else
-  storage = util.table.deepcopy(data.raw.container["steel-chest"])
-  storage.type = "logistic-container"
-  storage.logistic_mode = "requester"
-end
-
-storage.name = STORAGE
-storage.localised_name = {"multibuild.storage-name"}
-storage.localised_description = {"multibuild.storage-hint"}
-storage.minable = {mining_time = 0.5, result = STORAGE}
-storage.inventory_size = 1
-storage.render_not_in_network_icon = false
-storage.order = "b-storage"
-
-if storage.animation then
-  if storage.animation.layers then
-    for _, layer in pairs(storage.animation.layers) do
-      if not layer.draw_as_shadow then
-        layer.tint = STORAGE_TINT
-      end
-    end
-  else
-    storage.animation.tint = STORAGE_TINT
-  end
-elseif storage.picture and storage.picture.layers then
-  for _, layer in pairs(storage.picture.layers) do
-    if not layer.draw_as_shadow then
-      layer.tint = STORAGE_TINT
-    end
-  end
-end
-
-local storage_item = util.table.deepcopy(data.raw.item["steel-chest"])
-storage_item.name = STORAGE
-storage_item.localised_name = {"multibuild.storage-name"}
-storage_item.localised_description = {"multibuild.storage-hint"}
-storage_item.place_result = STORAGE
-storage_item.subgroup = "multibuild-frames"
-storage_item.order = "b-storage"
-storage_item.icons = {
-  {
-    icon = "__base__/graphics/icons/steel-chest.png",
-    icon_size = 64,
-    tint = STORAGE_TINT,
-  },
-}
-
-local storage_recipe = {
-  type = "recipe",
-  name = STORAGE,
-  enabled = true,
-  energy_required = 1,
-  ingredients = {
-    {type = "item", name = "steel-chest", amount = 1},
-    {type = "item", name = "iron-plate", amount = 10},
-  },
-  results = {{type = "item", name = STORAGE, amount = 1}},
-  subgroup = "multibuild-frames",
-  order = "b-storage",
   allow_productivity = false,
 }
 
@@ -174,10 +117,10 @@ local selector = {
     cursor_box_type = "entity",
     mode = {"any-tile", "any-entity"},
   },
-  alt_select = {          -- ПКМ: отмена выделения / отмена плана
-    border_color = {r = 1.0, g = 0.4, b = 0.4, a = 1.0},
-    cursor_box_type = "not-allowed",
-    mode = {"nothing"},
+  alt_select = {          -- ПКМ: открытие меню каталога чертежей
+    border_color = {r = 0.2, g = 0.85, b = 1.0, a = 1.0},
+    cursor_box_type = "entity",
+    mode = {"any-tile", "any-entity"},
   },
 }
 
@@ -222,7 +165,6 @@ data:extend({
     name = "multibuild-dummy",
   },
   frame, frame_item, frame_recipe,
-  storage, storage_item, storage_recipe,
   selector, selector_recipe,
   shortcut, hotkey,
 })
@@ -266,20 +208,53 @@ for _, target_name in ipairs(shared.TARGETS) do
     if h <= 0 then h = 1 end
     local plan_name = "mb-plan-" .. target_name
 
-    if not cbox then
-      cbox = {{-w/2 + 0.1, -h/2 + 0.1}, {w/2 - 0.1, h/2 - 0.1}}
-    elseif w ~= h then
-      local cx1 = cbox[1] and (cbox[1][1] or cbox[1].x) or (-w/2 + 0.1)
-      local cy1 = cbox[1] and (cbox[1][2] or cbox[1].y) or (-h/2 + 0.1)
-      local cx2 = cbox[2] and (cbox[2][1] or cbox[2].x) or (w/2 - 0.1)
-      local cy2 = cbox[2] and (cbox[2][2] or cbox[2].y) or (h/2 - 0.1)
-      if math.abs(math.abs(cx2 - cx1) - math.abs(cy2 - cy1)) < 0.1 then
-        cbox = {{-w/2 + 0.1, -h/2 + 0.1}, {w/2 - 0.1, h/2 - 0.1}}
-      end
-    end
+    -- Точный collision_box под размер здания, чтобы шаг протягивания (drag) совпадал с размером здания
+    cbox = {{-w/2 + 0.15, -h/2 + 0.15}, {w/2 - 0.15, h/2 - 0.15}}
 
     local function make_layers(sw, sh)
       local layers = {}
+
+      -- 1) Угловые рамки выделения из нативной текстуры курсора/выделения игры
+      -- Текстура углов выделения __core__/graphics/cursor-boxes-32x32.png или cursor-boxes.png
+      local corner_scale = 1.0
+      local x_off = (sw / 2) - 0.25
+      local y_off = (sh / 2) - 0.25
+
+      -- 4 нативных угловых маркера выделения чертежа
+      table.insert(layers, {
+        filename = "__core__/graphics/cursor-boxes-32x32.png",
+        x = 0, y = 0, width = 32, height = 32,
+        shift = {-x_off, -y_off},
+        scale = corner_scale,
+        tint = {r = 0.2, g = 0.85, b = 1.0, a = 0.9},
+        render_layer = "air-object",
+      })
+      table.insert(layers, {
+        filename = "__core__/graphics/cursor-boxes-32x32.png",
+        x = 32, y = 0, width = 32, height = 32,
+        shift = {x_off, -y_off},
+        scale = corner_scale,
+        tint = {r = 0.2, g = 0.85, b = 1.0, a = 0.9},
+        render_layer = "air-object",
+      })
+      table.insert(layers, {
+        filename = "__core__/graphics/cursor-boxes-32x32.png",
+        x = 0, y = 32, width = 32, height = 32,
+        shift = {-x_off, y_off},
+        scale = corner_scale,
+        tint = {r = 0.2, g = 0.85, b = 1.0, a = 0.9},
+        render_layer = "air-object",
+      })
+      table.insert(layers, {
+        filename = "__core__/graphics/cursor-boxes-32x32.png",
+        x = 32, y = 32, width = 32, height = 32,
+        shift = {x_off, y_off},
+        scale = corner_scale,
+        tint = {r = 0.2, g = 0.85, b = 1.0, a = 0.9},
+        render_layer = "air-object",
+      })
+
+      -- 2) Иконка целевого здания в центре
       if icons then
         for _, ic in ipairs(icons) do
           table.insert(layers, {
@@ -335,7 +310,7 @@ for _, target_name in ipairs(shared.TARGETS) do
       selection_box = sbox,
       collision_box = cbox,
       collision_mask = {layers = {}},
-      crafting_categories = {"multibuild-dummy"},
+            crafting_categories = {"multibuild-dummy"},
       crafting_speed = 1,
       energy_source = {type = "void"},
       energy_usage = "1W",

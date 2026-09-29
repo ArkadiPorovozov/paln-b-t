@@ -10,7 +10,40 @@ local procession_graphic_catalogue_types = require("__base__/prototypes/planet/p
 local tile_graphics = require("__base__/prototypes/tile/tile-graphics")
 local tile_spritesheet_layout = tile_graphics.tile_spritesheet_layout
 
-local function create_moon(name, icon, mame)
+
+local function create_tex(name, icon)
+  return {
+    type = "technology",
+    name = name,
+    icon = icon,
+    icon_size = 64,
+    effects =
+    {
+      {
+        type = "unlock-space-location",
+        space_location = name,
+        use_icon_overlay_constant = true
+      }
+    },
+    --prerequisites = {},
+    unit =
+    {
+      count = 100,
+      ingredients = {
+        {"automation-science-pack", 1},
+        {"logistic-science-pack", 1}
+      },
+      time = 30
+    }
+
+  }
+end
+
+
+
+
+
+local function create_p(name, icon, meme)
     return {
         type = "planet",
         name = name,
@@ -23,7 +56,7 @@ local function create_moon(name, icon, mame)
         magnitude = 1,
         order = "z",
         subgroup = "planets",
-        map_gen_settings = planet_map_gen[mame](),
+        map_gen_settings = planet_map_gen[meme](),
         platform_surface_render_parameters = {},
         draw_orbit = true,
         unlocked = true,
@@ -31,9 +64,15 @@ local function create_moon(name, icon, mame)
     }
 end
 
-data:extend({
-    create_moon("zalupa", "__space-age__/graphics/icons/solar-system-edge.png","p1"),
-})
+
+local function a1(name, icon, meme)
+  local a = create_p(name, icon, meme)
+  local b =  create_tex(name, icon)
+  return {a,b}
+end
+
+
+data:extend(a1("zalupa", "__space-age__/graphics/icons/solar-system-edge.png","p1"))
 
 
 
@@ -90,16 +129,3 @@ data:extend(
 		},
 	}
 )
-
--- Проверяем, существует ли нужная технология, чтобы игра не выдала ошибку
-if data.raw.technology["space-science-pack"] then
-  -- Если у технологии еще нет массива эффектов, создаем его
-  data.raw.technology["space-science-pack"].effects = data.raw.technology["space-science-pack"].effects or {}
-  
-  -- Добавляем эффект открытия нашей локации
-  table.insert(data.raw.technology["space-science-pack"].effects, {
-        type = "unlock-space-location",
-        space_location = "zalupa",
-        use_icon_overlay_constant = true
-  })
-end

@@ -2,10 +2,10 @@
 -- + платформенная анимация космической платформы
 -- + зелёный фрейм-сундук запроса для дронов (без зоны/радиуса, оплата впритык или из фрейма)
 -- + возможность класть предметы во фрейм (лимит 1 шт.), постройка только при наличии предмета,
--- + если предмета нет — постройка ставится в очередь (план) с иконкой, а фреймы остаются на месте!
--- + логистические запросы для дронов при планировке (в зелёный сундук и/или прямо в каркас!)
+-- + если предмета нет — постройка ставится в очередь (план) с нативным selection_box, а фреймы остаются на месте!
+-- + логистические запросы для дронов при планировке (в зелёный сундук и прямо в каркас)
 -- + компактное прозрачное меню (только 1 слот для предмета, без громоздкого инвентаря)
--- + невидимые сущности плана mb-plan-* с нативным выделением игры (без Lua-рендера!)
+-- + сущности плана mb-plan-* с нативным выделением игры (без дублирования текстур!)
 -- + план автоматически ставит под собой призраки каркаса (ghost mb-frame)
 -- + нативное копирование (Ctrl+C), чертежи, пипетка (Q) и Shift-клик для зданий впритык
 
@@ -13,7 +13,6 @@ local shared = (pcall(require, "shared") and require("shared")) or require("scri
 local platform_anim = (pcall(require, "platform_anim") and require("platform_anim")) or require("script/platform_anim")
 
 local FRAME = shared.FRAME_NAME
-local STORAGE = shared.STORAGE_NAME
 local SELECTOR = shared.SELECTOR_NAME
 local COST_FROM_INVENTORY = shared.COST_FROM_INVENTORY
 local POLL_TICKS = shared.PENDING_POLL_TICKS or 10
@@ -70,12 +69,6 @@ local function get_entity_recipe(ent, event_tags)
     recipe = event_tags.mb_recipe
   end
   return recipe
-end
-
-local function clear_selection(player)
-  if storage.sel and player then
-    storage.sel[player.index] = nil
-  end
 end
 
 local function ftext(surface, position, text, color)
@@ -216,7 +209,7 @@ local function set_entity_request(entity, item_name, count)
 
   if set_done then return end
 
-  -- 3) Legacy Factorio (1.1 и обратная совместимость)
+  -- 3) Legacy Factorio
   pcall(function()
     if entity.set_request_slot then
       entity.set_request_slot({name = item_name, count = count}, 1)
@@ -231,9 +224,7 @@ local function clear_entity_request(entity)
     local sections = entity.get_logistic_sections and entity.get_logistic_sections()
     if sections and sections.sections_count and sections.sections_count > 0 then
       local sec = sections.get_section(1)
-      if sec then
-        pcall(sec.clear_slot, 1)
-      end
+      if sec then pcall(sec.clear_slot, 1) end
     end
   end)
 
@@ -241,9 +232,7 @@ local function clear_entity_request(entity)
     local pt = entity.get_requester_point and entity.get_requester_point()
     if pt and pt.sections_count and pt.sections_count > 0 then
       local sec = pt.get_section(1)
-      if sec then
-        pcall(sec.clear_slot, 1)
-      end
+      if sec then pcall(sec.clear_slot, 1) end
     end
   end)
 
@@ -254,33 +243,9 @@ local function clear_entity_request(entity)
   end)
 end
 
-local function get_touching_storages(surface, rect)
-  local search_area = {
-    {rect.minx - 1.5, rect.miny - 1.5},
-    {rect.minx + rect.w + 0.5, rect.miny + rect.h + 0.5},
-  }
-  local list = {}
-  for _, e in ipairs(surface.find_entities_filtered{name = STORAGE, area = search_area}) do
-    local stx = math.floor(e.position.x)
-    local sty = math.floor(e.position.y)
-    if stx >= rect.minx - 1 and stx <= rect.minx + rect.w
-       and sty >= rect.miny - 1 and sty <= rect.miny + rect.h then
-      list[#list + 1] = e
-    end
-  end
-  return list
-end
-
 local function update_pending_requests(surface, rect, target)
   if not (surface and surface.valid and rect and target) then return end
 
-  -- Прилегающие зелёные сундуки
-  local storages = get_touching_storages(surface, rect)
-  for _, st in ipairs(storages) do
-    set_entity_request(st, target, 1)
-  end
-
-  -- Центральный (или первый) фрейм постройки
   local cx = math.floor(rect.minx + rect.w / 2)
   local cy = math.floor(rect.miny + rect.h / 2)
   local target_frame = surface.find_entity(FRAME, {cx + 0.5, cy + 0.5})
@@ -305,10 +270,6 @@ end
 local function clear_pending_requests(surface, rect)
   if not (surface and surface.valid and rect) then return end
 
-  for _, st in ipairs(get_touching_storages(surface, rect)) do
-    clear_entity_request(st)
-  end
-
   for x = rect.minx, rect.minx + rect.w - 1 do
     for y = rect.miny, rect.miny + rect.h - 1 do
       local f = surface.find_entity(FRAME, {x + 0.5, y + 0.5})
@@ -320,8 +281,6 @@ local function clear_pending_requests(surface, rect)
 end
 
 -- ===== скан кластера блоков каркаса =====
--- Фреймы, уже занятые ДРУГИМ активным планом (pending) или стройкой (job),
--- исключаются из сканирования. Это позволяет зданиям стоять ВПРИТЫК друг к другу!
 local function cluster_info(surface, tx, ty)
   local target_plan = find_pending_at(surface, tx, ty)
 
@@ -364,31 +323,106 @@ local function cluster_info(surface, tx, ty)
     end
   end
 
-  local minx, miny, maxx, maxy = math.huge, math.huge, -math.huge, -math.huge
+  local minx_all, miny_all, maxx_all, maxy_all = math.huge, math.huge, -math.huge, -math.huge
   for _, t in ipairs(cluster) do
-    if t.tx < minx then minx = t.tx end
-    if t.ty < miny then miny = t.ty end
-    if t.tx > maxx then maxx = t.tx end
-    if t.ty > maxy then maxy = t.ty end
+    if t.tx < minx_all then minx_all = t.tx end
+    if t.ty < miny_all then miny_all = t.ty end
+    if t.tx > maxx_all then maxx_all = t.tx end
+    if t.ty > maxy_all then maxy_all = t.ty end
   end
-  local w, h = maxx - minx + 1, maxy - miny + 1
-  local complete = (w * h == #cluster)
 
-  local candidates = {}
-  if complete then
-    for name, s in pairs(target_sizes()) do
-      if (s.w == w and s.h == h) or (s.w == h and s.h == w) then
-        candidates[#candidates + 1] = name
+  -- Ищем максимальный сплошной прямоугольник без пропусков, содержащий кликнутый каркас (tx, ty)
+  local supported = {}
+  for _, s in pairs(target_sizes()) do
+    supported[s.w .. "x" .. s.h] = true
+    supported[s.h .. "x" .. s.w] = true
+  end
+
+  local best_supported = nil
+  local best_any = nil
+
+  -- Перебираем все возможные прямоугольники без дыр вокруг (tx, ty)
+  for minx = minx_all, tx do
+    for miny = miny_all, ty do
+      for maxx = tx, maxx_all do
+        for maxy = ty, maxy_all do
+          local cur_w = maxx - minx + 1
+          local cur_h = maxy - miny + 1
+          local is_solid = true
+
+          for x = minx, maxx do
+            for y = miny, maxy do
+              if not tiles[tile_key(x, y)] then
+                is_solid = false
+                break
+              end
+            end
+            if not is_solid then break end
+          end
+
+          if is_solid then
+            local is_supp = supported[cur_w .. "x" .. cur_h]
+            local cur_area = cur_w * cur_h
+            local min_dim = math.min(cur_w, cur_h)
+            local aspect_penalty = -math.abs(cur_w - cur_h)
+
+            if is_supp then
+              if not best_supported
+                 or cur_area > best_supported.area
+                 or (cur_area == best_supported.area and min_dim > best_supported.min_dim)
+                 or (cur_area == best_supported.area and min_dim == best_supported.min_dim and aspect_penalty > best_supported.aspect_penalty) then
+                best_supported = {
+                  w = cur_w, h = cur_h,
+                  minx = minx, miny = miny,
+                  area = cur_area, min_dim = min_dim,
+                  aspect_penalty = aspect_penalty,
+                }
+              end
+            end
+
+            if not best_any
+               or cur_area > best_any.area
+               or (cur_area == best_any.area and min_dim > best_any.min_dim)
+               or (cur_area == best_any.area and min_dim == best_any.min_dim and aspect_penalty > best_any.aspect_penalty) then
+              best_any = {
+                w = cur_w, h = cur_h,
+                minx = minx, miny = miny,
+                area = cur_area, min_dim = min_dim,
+                aspect_penalty = aspect_penalty,
+              }
+            end
+          end
+        end
       end
     end
-    table.sort(candidates)
   end
 
+  local chosen = best_supported or best_any or {
+    w = 1, h = 1, minx = tx, miny = ty, area = 1
+  }
+
+  local chosen_cluster = {}
+  for x = chosen.minx, chosen.minx + chosen.w - 1 do
+    for y = chosen.miny, chosen.miny + chosen.h - 1 do
+      chosen_cluster[#chosen_cluster + 1] = {tx = x, ty = y}
+    end
+  end
+
+  local candidates = {}
+  for name, s in pairs(target_sizes()) do
+    if (s.w == chosen.w and s.h == chosen.h) or (s.w == chosen.h and s.h == chosen.w) then
+      candidates[#candidates + 1] = name
+    end
+  end
+  table.sort(candidates)
+
   return {
-    count = #cluster, w = w, h = h,
-    minx = minx, miny = miny,
-    complete = complete,
-    cluster = cluster, entities = entities,
+    count = #chosen_cluster,
+    w = chosen.w, h = chosen.h,
+    minx = chosen.minx, miny = chosen.miny,
+    complete = true,
+    cluster = chosen_cluster,
+    entities = entities,
     candidates = candidates,
   }
 end
@@ -399,7 +433,7 @@ local function rect_info(surface, rect)
     for y = rect.miny, rect.miny + rect.h - 1 do
       cluster[#cluster + 1] = {tx = x, ty = y}
       local pos = {x + 0.5, y + 0.5}
-      local e = surface.find_entity(FRAME, pos) or surface.find_entity(STORAGE, pos)
+      local e = surface.find_entity(FRAME, pos)
       if e then
         entities[tile_key(x, y)] = e
       else
@@ -417,8 +451,6 @@ local function rect_info(surface, rect)
   }
 end
 
--- Поиск точного прямоугольника под целевое здание заданного размера,
--- даже если каркасы стоят впритык друг к другу на общем поле!
 local function find_building_rect_at(surface, dx, dy, target_building)
   local s = target_sizes()[target_building]
   if not s then return nil end
@@ -453,8 +485,7 @@ local function find_building_rect_at(surface, dx, dy, target_building)
       for x = r.minx, r.minx + r.w - 1 do
         for y = r.miny, r.miny + r.h - 1 do
           local pos = {x + 0.5, y + 0.5}
-          local f = surface.find_entity(FRAME, pos) or surface.find_entity(STORAGE, pos)
-          -- Допускаются также клетки, где стоит призрак каркаса (entity-ghost)
+          local f = surface.find_entity(FRAME, pos)
           if not f then
             local g = surface.find_entity("entity-ghost", pos)
             if not (g and g.ghost_name == FRAME) then
@@ -484,82 +515,6 @@ local function find_building_rect_at(surface, dx, dy, target_building)
   return nil
 end
 
-local function find_subrect_at(info, ctx_tx, ctx_ty)
-  local sizes = target_sizes()
-  local set = {}
-  for _, t in ipairs(info.cluster) do
-    set[tile_key(t.tx, t.ty)] = true
-  end
-
-  local order = {}
-  for name in pairs(sizes) do order[#order + 1] = name end
-  table.sort(order, function(a, b)
-    return sizes[a].area > sizes[b].area
-  end)
-
-  for _, name in ipairs(order) do
-    local s = sizes[name]
-    local variants = (s.w == s.h) and {{s.w, s.h}} or {{s.w, s.h}, {s.h, s.w}}
-    for _, dims in ipairs(variants) do
-      local fw, fh = dims[1], dims[2]
-
-      local candidate_rects = {}
-      for ox = ctx_tx - fw + 1, ctx_tx do
-        for oy = ctx_ty - fh + 1, ctx_ty do
-          if ox >= info.minx and oy >= info.miny
-            and ox + fw - 1 <= info.minx + info.w - 1
-            and oy + fh - 1 <= info.miny + info.h - 1
-          then
-            local all = true
-            for x = ox, ox + fw - 1 do
-              for y = oy, oy + fh - 1 do
-                if not set[tile_key(x, y)] then
-                  all = false
-                  break
-                end
-              end
-              if not all then break end
-            end
-            if all then
-              table.insert(candidate_rects, {minx = ox, miny = oy, w = fw, h = fh})
-            end
-          end
-        end
-      end
-
-      if #candidate_rects > 0 then
-        table.sort(candidate_rects, function(a, b)
-          local a_align = ((a.minx - info.minx) % fw == 0) and ((a.miny - info.miny) % fh == 0)
-          local b_align = ((b.minx - info.minx) % fw == 0) and ((b.miny - info.miny) % fh == 0)
-          if a_align ~= b_align then return a_align end
-          local da = math.abs(a.minx - ctx_tx) + math.abs(a.miny - ctx_ty)
-          local db = math.abs(b.minx - ctx_tx) + math.abs(b.miny - ctx_ty)
-          return da < db
-        end)
-        return candidate_rects[1]
-      end
-    end
-  end
-  return nil
-end
-
-local function subinfo_from(info, rect)
-  local cluster, entities = {}, {}
-  for x = rect.minx, rect.minx + rect.w - 1 do
-    for y = rect.miny, rect.miny + rect.h - 1 do
-      cluster[#cluster + 1] = {tx = x, ty = y}
-      entities[tile_key(x, y)] = info.entities[tile_key(x, y)]
-    end
-  end
-  return {
-    count = rect.w * rect.h,
-    w = rect.w, h = rect.h,
-    minx = rect.minx, miny = rect.miny,
-    complete = true,
-    cluster = cluster, entities = entities,
-  }
-end
-
 local function candidates_for_size(w, h)
   local c = {}
   for name, s in pairs(target_sizes()) do
@@ -579,24 +534,19 @@ local function resolve_area(surface, tx, ty)
     return info, info.candidates, info
   end
 
-  local rect = find_subrect_at(info, tx, ty)
-  if rect then
-    local subinfo = subinfo_from(info, rect)
-    return subinfo, candidates_for_size(subinfo.w, subinfo.h), info
-  end
-
   return nil, nil, info
 end
 
 -- ===== поиск и списание ресурса =====
 local function find_resource_source(surface, rect, target, player)
-  -- 1) Фреймы внутри постройки
+  -- Ресурс берётся ИСКЛЮЧИТЕЛЬНО из слотов самих каркасов (frame).
+  -- Никакой проверки или списания из инвентаря игрока!
   for x = rect.minx, rect.minx + rect.w - 1 do
     for y = rect.miny, rect.miny + rect.h - 1 do
       local pos = {x + 0.5, y + 0.5}
       local entities = surface.find_entities_filtered{
         position = pos,
-        name = {FRAME, STORAGE},
+        name = {FRAME},
       }
       for _, e in ipairs(entities) do
         local inv = e.get_inventory(defines.inventory.chest)
@@ -604,22 +554,6 @@ local function find_resource_source(surface, rect, target, player)
           return {kind = "frame", entity = e, inv = inv}
         end
       end
-    end
-  end
-
-  -- 2) Зелёные хранилища "впритык"
-  for _, e in ipairs(get_touching_storages(surface, rect)) do
-    local inv = e.get_inventory(defines.inventory.chest)
-    if inv and inv.get_item_count(target) >= 1 then
-      return {kind = "storage", entity = e, inv = inv}
-    end
-  end
-
-  -- 3) Инвентарь игрока (только если игрок явно вызвал постройку через меню/панель)
-  if COST_FROM_INVENTORY and player and player.valid then
-    local inv = player.get_main_inventory()
-    if inv and inv.get_item_count(target) >= 1 then
-      return {kind = "player", player = player, inv = inv}
     end
   end
 
@@ -643,18 +577,14 @@ local function begin_payment(surface, rect, target, player)
 end
 
 local function end_payment_refund(surface, position, payer, target)
-  if not COST_FROM_INVENTORY or not payer or payer.kind == "free" then return end
+  if not payer or payer.kind == "free" then return end
   if payer.entity and payer.entity.valid then
     local inv = payer.entity.get_inventory(defines.inventory.chest)
-    if inv then inv.insert({name = target, count = 1}) return end
-  elseif payer.player and payer.player.valid then
-    local inv = payer.player.get_main_inventory()
     if inv then inv.insert({name = target, count = 1}) return end
   end
   surface.spill_item_stack{position = position, stack = {name = target, count = 1}, enable_looted = true}
 end
 
--- ===== работа с каркасом =====
 local function restore_frames(surface, info, force)
   local lost = 0
   for _, t in ipairs(info.cluster) do
@@ -680,29 +610,37 @@ end
 local function destroy_frames_at(surface, tiles)
   for _, t in ipairs(tiles) do
     local pos = {t.tx + 0.5, t.ty + 0.5}
-    local e = surface.find_entity(FRAME, pos) or surface.find_entity(STORAGE, pos)
+    local e = surface.find_entity(FRAME, pos)
     if e and e.valid then e.destroy() end
   end
 end
 
 -- ===== СИСТЕМА ПЛАНОВ С СУЩНОСТЯМИ mb-plan-* =====
--- Невидимые сущности плана имеют нативный selection_box из игры (без Lua-рендера!)
--- и автоматически ставят под собой призраки каркаса (ghost mb-frame).
--- Отрисовка плана и нативного selection_box выполняется самим движком Factorio через сущность плана на слое "air-object".
-
-local function drop_pending(i)
+local function drop_pending(i, clean_ghost_frames)
   local p = storage.pendings[i]
   if p then
     if p.render_obj and p.render_obj.valid then
       p.render_obj.destroy()
       p.render_obj = nil
     end
+
     if p.plan_entity and p.plan_entity.valid then
       p.plan_entity.destroy()
       p.plan_entity = nil
     end
     if p.surface and p.surface.valid and p.rect then
       clear_pending_requests(p.surface, p.rect)
+      -- При явной отмене/сносе плана удаляем также поставленные призраки каркасов под ним
+      if clean_ghost_frames then
+        for x = p.rect.minx, p.rect.minx + p.rect.w - 1 do
+          for y = p.rect.miny, p.rect.miny + p.rect.h - 1 do
+            local ghosts = p.surface.find_entities_filtered{name = "entity-ghost", position = {x + 0.5, y + 0.5}}
+            for _, g in ipairs(ghosts) do
+              if g.ghost_name == FRAME then g.destroy() end
+            end
+          end
+        end
+      end
     end
   end
   table.remove(storage.pendings, i)
@@ -714,7 +652,6 @@ local function add_pending(surface, info, target, force, player, recipe, directi
   local cy = rect.miny + rect.h / 2
   local s = target_sizes()[target]
 
-  -- Определяем направление: если не задано, проверяем соотношение сторон
   local dir = direction
   if not dir and s then
     if s.w ~= s.h and info.w == s.h and info.h == s.w then
@@ -742,7 +679,7 @@ local function add_pending(surface, info, target, force, player, recipe, directi
     end
   end
 
-  -- 1) Создаем сущность плана с точным направлением (Factorio сам повернет selection_box и иконку без дублирования!)
+  -- 1) Создаем сущность плана с точным направлением
   if not (plan_ent and plan_ent.valid) then
     if prototypes.entity[plan_name] then
       plan_ent = surface.create_entity{
@@ -758,19 +695,30 @@ local function add_pending(surface, info, target, force, player, recipe, directi
     plan_ent.direction = dir
   end
 
-  -- 2) "ставили под собой призрак каркаса для постройки самого здания"
+  -- 2) Ставим призраки каркасов под планом гарантированно на каждый тайл
   for x = rect.minx, rect.minx + rect.w - 1 do
     for y = rect.miny, rect.miny + rect.h - 1 do
       local pos = {x + 0.5, y + 0.5}
-      local existing = surface.find_entity(FRAME, pos) or surface.find_entity(STORAGE, pos)
-      local ghost = surface.find_entity("entity-ghost", pos)
-      if not existing and not ghost then
-        surface.create_entity{
-          name = "entity-ghost",
-          inner_name = FRAME,
-          position = pos,
-          force = force or (player and player.force) or "player",
-        }
+      local existing = surface.find_entity(FRAME, pos)
+      if not existing then
+        local ghosts = surface.find_entities_filtered{name = "entity-ghost", position = pos}
+        local has_frame_ghost = false
+        for _, g in ipairs(ghosts) do
+          if g.ghost_name == FRAME then
+            has_frame_ghost = true
+            break
+          end
+        end
+        if not has_frame_ghost then
+          surface.create_entity{
+            name = "entity-ghost",
+            inner_name = FRAME,
+            position = pos,
+            force = force or (player and player.force) or "player",
+            create_build_effect_smoke = false,
+            raise_built = false,
+          }
+        end
       end
     end
   end
@@ -782,6 +730,7 @@ local function add_pending(surface, info, target, force, player, recipe, directi
       existing.render_obj.destroy()
     end
     existing.render_obj = nil
+
     if existing.plan_entity and existing.plan_entity.valid and existing.plan_entity ~= plan_ent then
       existing.plan_entity.destroy()
     end
@@ -827,41 +776,23 @@ local function poll_pendings()
     local p = pendings[i]
     if not (p.surface and p.surface.valid) then
       drop_pending(i)
+    -- ВАЖНО: если сущность плана была снесена/уничтожена игроком, план считается отмененным! Не воскрешаем его!
+    elseif p.plan_entity and not p.plan_entity.valid then
+      drop_pending(i, true)
     else
-      -- Удаляем устаревшие render_obj, если остались из прошлых версий
       if p.render_obj and p.render_obj.valid then
         p.render_obj.destroy()
         p.render_obj = nil
       end
 
-      -- Проверяем наличие сущности плана, если вдруг исчезла
-      if not (p.plan_entity and p.plan_entity.valid) then
-        local plan_name = "mb-plan-" .. p.target
-        if prototypes.entity[plan_name] then
-          local cx = p.rect.minx + p.rect.w / 2
-          local cy = p.rect.miny + p.rect.h / 2
-          p.plan_entity = p.surface.create_entity{
-            name = plan_name,
-            position = {cx, cy},
-            direction = p.direction or defines.direction.north,
-            force = p.force,
-            create_build_effect_smoke = false,
-            raise_built = false,
-          }
-        end
-      end
-
       local info = rect_info(p.surface, p.rect)
-      -- Все ли каркасы готовы?
       if info.complete then
-        -- Проверяем появление предмета здания (принесён дроном или положен игроком)
         local source = find_resource_source(p.surface, p.rect, p.target, nil)
         if source then
           local target = p.target
           local force = p.force
           local recipe = p.recipe
           local dir = p.direction
-          -- Удаляем сущность плана перед началом постройки
           if p.plan_entity and p.plan_entity.valid then
             p.plan_entity.destroy()
             p.plan_entity = nil
@@ -893,14 +824,12 @@ start_build = function(surface, target, info, force, player, recipe, direction)
     end
   end
 
-  -- 1) Не запускаем повторно, если на этих клетках уже строится здание
   for _, j in pairs(storage.jobs or {}) do
     if j.surface == surface and j.rect and rects_overlap(rect, j.rect) then
       return
     end
   end
 
-  -- Проверяем рецепт из сохранённых при копировании
   local target_recipe = recipe
   if not target_recipe and storage.pending_recipes then
     local k = tile_key(info.minx, info.miny)
@@ -908,15 +837,12 @@ start_build = function(surface, target, info, force, player, recipe, direction)
     storage.pending_recipes[k] = nil
   end
 
-  -- 2) Проверяем наличие предмета
   local payer = begin_payment(surface, rect, target, player)
   if not payer then
-    -- Предмета нет: ставим в план mb-plan-* и призраки каркаса под ним
     add_pending(surface, info, target, force, player, target_recipe, dir)
     return
   end
 
-  -- 3) Предмет ЕСТЬ и списан:
   if existing then
     if not target_recipe then target_recipe = existing.recipe end
     if not dir then dir = existing.direction end
@@ -931,7 +857,6 @@ start_build = function(surface, target, info, force, player, recipe, direction)
     drop_pending(idx)
   end
 
-  -- Удаляем любые сущности плана, если остались на месте
   local old_plans = surface.find_entities_filtered{
     area = {{rect.minx, rect.miny}, {rect.minx + rect.w, rect.miny + rect.h}},
   }
@@ -941,7 +866,6 @@ start_build = function(surface, target, info, force, player, recipe, direction)
     end
   end
 
-  -- Закрываем открытые кастомные меню каркаса у игроков
   for _, p in pairs(game.connected_players) do
     if p.gui.screen.mb_frame_menu then
       close_custom_frame_menu(p)
@@ -955,7 +879,7 @@ start_build = function(surface, target, info, force, player, recipe, direction)
     end
   end
 
-  -- Платформенная строительная анимация
+  -- Запуск зрелищной анимации возведения строительных лесов космической платформы!
   local area = {
     left_top = {x = info.minx, y = info.miny},
     right_bottom = {x = info.minx + info.w, y = info.miny + info.h},
@@ -1026,7 +950,6 @@ local function enforce_frame_limit_and_check(frame_entity, player)
   local tx = math.floor(frame_entity.position.x)
   local ty = math.floor(frame_entity.position.y)
 
-  -- 1) Проверяем, есть ли уже план для этой площадки
   local p, p_idx = find_pending_at(surface, tx, ty)
   if p then
     if p.target == item_name then
@@ -1044,7 +967,6 @@ local function enforce_frame_limit_and_check(frame_entity, player)
     return
   end
 
-  -- 2) Если плана не было, проверяем подходящее здание
   local build_info = find_building_rect_at(surface, tx, ty, item_name)
   if not build_info then
     local b_info, candidates = resolve_area(surface, tx, ty)
@@ -1073,7 +995,6 @@ local function enforce_frame_limit_and_check(frame_entity, player)
   end
 end
 
--- ===== КОМПАКТНОЕ ПРОЗРАЧНОЕ МЕНЮ С 1 СЛОТОМ ДЛЯ ФРЕЙМА =====
 
 local function add_close_button(parent, name)
   local sprite = "utility/close"
@@ -1090,6 +1011,117 @@ local function add_close_button(parent, name)
     tooltip = {"gui.close"},
   }
 end
+
+-- ===== МЕНЮ ВЫБОРА ЧЕРТЕЖА / ПЛАНА ЗДАНИЯ ПРИ ДВОЙНОМ КЛИКЕ =====
+local function close_plan_catalog_menu(player)
+  if not (player and player.valid) then return end
+  local win = player.gui.screen.mb_plan_catalog_menu
+  if win and win.valid then
+    win.destroy()
+  end
+  if player.opened and player.opened == win then
+    player.opened = nil
+  end
+end
+
+local function open_plan_catalog_menu(player, target_tile)
+  close_plan_catalog_menu(player)
+  close_custom_frame_menu(player)
+
+  local win = player.gui.screen.add{
+    type = "frame",
+    name = "mb_plan_catalog_menu",
+    style = "mb_transparent_frame",
+    direction = "vertical",
+  }
+  win.auto_center = true
+
+  -- Шапка меню с возможностью перетаскивания и кнопкой закрытия
+  local titlebar = win.add{type = "flow", direction = "horizontal"}
+  pcall(function()
+    titlebar.style.vertical_align = "center"
+    titlebar.style.horizontal_spacing = 8
+  end)
+
+  titlebar.add{
+    type = "label",
+    caption = {"multibuild.catalog-title"},
+    style = "frame_title",
+    ignored_by_interaction = true,
+  }
+
+  local drag_filler = titlebar.add{
+    type = "empty-widget",
+    style = "draggable_space_header",
+    ignored_by_interaction = true,
+  }
+  pcall(function()
+    drag_filler.style.horizontally_stretchable = true
+    drag_filler.style.height = 24
+    drag_filler.drag_target = win
+  end)
+
+  add_close_button(titlebar, "mb_plan_catalog_close")
+
+  local desc = win.add{
+    type = "label",
+    caption = {"multibuild.catalog-desc"},
+      }
+  pcall(function() desc.style.single_line = false; desc.style.maximal_width = 320 end)
+
+  -- Сетка доступных зданий для выбора чертежа
+  local scroll = win.add{
+    type = "scroll-pane",
+        direction = "vertical",
+  }
+  pcall(function()
+    scroll.style.maximal_height = 360
+    scroll.style.maximal_width = 330
+  end)
+
+  local grid = scroll.add{
+    type = "table",
+    column_count = 5,
+      }
+
+  local sizes = target_sizes()
+  local added_count = 0
+  for _, target_name in ipairs(shared.TARGETS) do
+    local s = sizes[target_name]
+    if s then
+      local sprite = "entity/" .. target_name
+      if helpers and helpers.is_valid_sprite_path and not helpers.is_valid_sprite_path(sprite) then
+        sprite = "item/" .. target_name
+      end
+
+      local b = grid.add{
+        type = "sprite-button",
+        sprite = sprite,
+        style = "slot_button",
+        tooltip = {"", {"entity-name." .. target_name}, " (" .. s.w .. "×" .. s.h .. ")"},
+      }
+      b.tags = {
+        mb_catalog_target = target_name,
+        mb_tile_x = target_tile and target_tile.x or math.floor(player.position.x),
+        mb_tile_y = target_tile and target_tile.y or math.floor(player.position.y),
+      }
+      added_count = added_count + 1
+    end
+  end
+
+  local bflow = win.add{type = "flow", direction = "horizontal"}
+  pcall(function() bflow.style.top_margin = 8 end)
+  bflow.add{
+    type = "button",
+    name = "mb_plan_catalog_close",
+    caption = {"multibuild.menu-close"},
+  }
+
+  player.opened = win
+end
+
+-- ===== КОМПАКТНОЕ ПРОЗРАЧНОЕ МЕНЮ С 1 СЛОТОМ ДЛЯ ФРЕЙМА =====
+
 
 close_custom_frame_menu = function(player)
   if not (player and player.valid) then return end
@@ -1113,15 +1145,17 @@ close_custom_frame_menu = function(player)
   end
 end
 
-open_custom_frame_menu = function(player, entity)
+open_custom_frame_menu = function(player, entity, explicit_rect)
   close_custom_frame_menu(player)
 
-  local tx = math.floor(entity.position.x)
-  local ty = math.floor(entity.position.y)
-  local build_info, candidates = resolve_area(entity.surface, tx, ty)
-  local raw_info = cluster_info(entity.surface, tx, ty) or {count = 1, w = 1, h = 1, complete = true}
-  local w = build_info and build_info.w or raw_info.w
-  local h = build_info and build_info.h or raw_info.h
+  local tx = entity and math.floor(entity.position.x) or (explicit_rect and explicit_rect.minx or 0)
+  local ty = entity and math.floor(entity.position.y) or (explicit_rect and explicit_rect.miny or 0)
+  local rect = explicit_rect or {minx = tx, miny = ty, w = 1, h = 1}
+
+  local w = rect.w
+  local h = rect.h
+  local candidates = candidates_for_size(w, h)
+  local raw_info = rect_info(player.surface, rect)
 
   storage.opened_frames = storage.opened_frames or {}
   storage.opened_frames[player.index] = {
@@ -1129,6 +1163,7 @@ open_custom_frame_menu = function(player, entity)
     tx = tx,
     ty = ty,
     surface_index = entity.surface.index,
+    explicit_rect = explicit_rect,
   }
 
   local win = player.gui.screen.add{
@@ -1218,7 +1253,11 @@ open_custom_frame_menu = function(player, entity)
     caption = {"multibuild.frame-slot-title"},
   }
 
-  -- 4) Выбор здания для планирования (компактные кнопки-слоты)
+  -- 4) Выбор здания для планирования
+  if not candidates or #candidates == 0 then
+    candidates = candidates_for_size(w, h)
+  end
+
   if candidates and #candidates > 0 then
     local cand_flow = win.add{type = "flow", direction = "vertical"}
     pcall(function() cand_flow.style.vertical_spacing = 4 end)
@@ -1248,6 +1287,10 @@ open_custom_frame_menu = function(player, entity)
         mb_tx = tx,
         mb_ty = ty,
         mb_surface = entity.surface.index,
+        mb_minx = explicit_rect and explicit_rect.minx or nil,
+        mb_miny = explicit_rect and explicit_rect.miny or nil,
+        mb_w = explicit_rect and explicit_rect.w or nil,
+        mb_h = explicit_rect and explicit_rect.h or nil,
       }
     end
   elseif raw_info and not raw_info.complete then
@@ -1272,23 +1315,17 @@ open_custom_frame_menu = function(player, entity)
   player.opened = win
 end
 
--- ===== взаимодействие с кастомным инвентарём (2.0+) =====
+-- взаимодействие с инвентарем и передача предметов
 if defines.events.on_gui_inventory_action then
   script.on_event(defines.events.on_gui_inventory_action, function(event)
     local player = game.get_player(event.player_index)
     if not player then return end
     local opened_data = storage.opened_frames and storage.opened_frames[player.index]
     if not (opened_data and opened_data.entity and opened_data.entity.valid) then return end
-
-    local ent = opened_data.entity
-    local ent_inv = ent.get_inventory(defines.inventory.chest)
-    if not ent_inv then return end
-
-    enforce_frame_limit_and_check(ent, player)
+    enforce_frame_limit_and_check(opened_data.entity, player)
   end)
 end
 
--- отслеживание быстрой передачи предметов игроком (Ctrl + клик в мире)
 if defines.events.on_player_fast_transferred then
   script.on_event(defines.events.on_player_fast_transferred, function(event)
     local entity = event.entity
@@ -1299,7 +1336,6 @@ if defines.events.on_player_fast_transferred then
   end)
 end
 
--- отслеживание сброса предмета в фрейм (Z в мире)
 if defines.events.on_player_dropped_item_into_entity then
   script.on_event(defines.events.on_player_dropped_item_into_entity, function(event)
     local entity = event.entity
@@ -1393,7 +1429,7 @@ if defines.events.on_entity_settings_pasted then
   script.on_event(defines.events.on_entity_settings_pasted, handle_paste_settings)
 end
 
--- ===== ПИПЕТКА (КЛАВИША Q НА ЗАПЛАНИРОВАННОМ КАРКАСЕ ИЛИ СУЩНОСТИ ПЛАНА) =====
+-- ===== ПИПЕТКА (КЛАВИША Q) =====
 if defines.events.on_player_pipette then
   script.on_event(defines.events.on_player_pipette, function(event)
     local player = game.get_player(event.player_index)
@@ -1423,23 +1459,9 @@ if defines.events.on_player_pipette then
 
     if target then
       local plan_item = "mb-plan-" .. target
-      local pinv = player.get_main_inventory()
-      if is_plan then
-        local ok = pcall(function() player.cursor_ghost = plan_item end)
-        if not ok then
-          pcall(function() player.cursor_ghost = target end)
-        end
-      else
-        if pinv and pinv.get_item_count(target) >= 1 then
-          player.clear_cursor()
-          local stack = pinv.find_item_stack(target)
-          if stack then player.cursor_stack.transfer_stack(stack) end
-        else
-          local ok = pcall(function() player.cursor_ghost = plan_item end)
-          if not ok then
-            pcall(function() player.cursor_ghost = target end)
-          end
-        end
+      local ok = pcall(function() player.cursor_ghost = plan_item end)
+      if not ok then
+        pcall(function() player.cursor_ghost = target end)
       end
     end
   end)
@@ -1475,6 +1497,7 @@ if defines.events.on_player_rotated_entity then
         local new_minx = math.floor(cx - new_w / 2 + 0.001)
         local new_miny = math.floor(cy - new_h / 2 + 0.001)
 
+
         clear_pending_requests(p.surface, p.rect)
         for x = p.rect.minx, p.rect.minx + p.rect.w - 1 do
           for y = p.rect.miny, p.rect.miny + p.rect.h - 1 do
@@ -1497,7 +1520,7 @@ if defines.events.on_player_rotated_entity then
         for x = new_minx, new_minx + new_w - 1 do
           for y = new_miny, new_miny + new_h - 1 do
             local pos = {x + 0.5, y + 0.5}
-            local existing = p.surface.find_entity(FRAME, pos) or p.surface.find_entity(STORAGE, pos)
+            local existing = p.surface.find_entity(FRAME, pos)
             local ghost = p.surface.find_entity("entity-ghost", pos)
             if not existing and not ghost then
               p.surface.create_entity{
@@ -1523,53 +1546,84 @@ local function on_plan_entity_removed(event)
   if not (e and e.valid) then return end
   if string.sub(e.name, 1, 8) ~= "mb-plan-" then return end
 
+  local surface = e.surface
+  local pos = {x = e.position.x, y = e.position.y}
+  local minx = math.floor(pos.x - 2)
+  local miny = math.floor(pos.y - 2)
+
   for i = #(storage.pendings or {}), 1, -1 do
     local p = storage.pendings[i]
-    if p.plan_entity == e or (p.surface == e.surface and rects_overlap(p.rect, {
-      minx = math.floor(e.position.x - 2),
-      miny = math.floor(e.position.y - 2),
-      w = 4,
-      h = 4,
+    if p.plan_entity == e or (p.surface == surface and rects_overlap(p.rect, {
+      minx = minx,
+      miny = miny,
+      w = 4, h = 4,
     })) then
-      drop_pending(i)
-      ftext(e.surface, e.position, {"multibuild.plan-cancelled"}, {r = 1, g = 0.5, b = 0.5})
+      -- Сносим план и удаляем призраки каркаса под ним, чтобы план не возродился!
+      drop_pending(i, true)
+      ftext(surface, pos, {"multibuild.plan-cancelled"}, {r = 1, g = 0.5, b = 0.5})
       break
     end
   end
 end
 
-script.on_event(defines.events.on_player_mined_entity, on_plan_entity_removed)
-script.on_event(defines.events.on_robot_mined_entity, on_plan_entity_removed)
-script.on_event(defines.events.on_entity_died, on_plan_entity_removed)
+-- Снос каркаса отменяет план
+local function on_frame_removed(event)
+  local e = event.entity
+  if not (e and e.valid) then return end
+  if e.name ~= FRAME  then return end
+
+  local ex = math.floor(e.position.x)
+  local ey = math.floor(e.position.y)
+
+  if storage.opened_frames then
+    for p_index, data in pairs(storage.opened_frames) do
+      if data.entity == e then
+        local p = game.get_player(p_index)
+        if p and p.valid then
+          close_custom_frame_menu(p)
+        end
+      end
+    end
+  end
+
+  local ex = math.floor(e.position.x)
+  local ey = math.floor(e.position.y)
+  local pendings = storage.pendings or {}
+  for i = #pendings, 1, -1 do
+    local p = pendings[i]
+    if p.surface == e.surface then
+      if ex >= p.rect.minx and ex < p.rect.minx + p.rect.w
+         and ey >= p.rect.miny and ey < p.rect.miny + p.rect.h then
+        drop_pending(i, false)
+      end
+    end
+  end
+end
+
+local function on_mined_or_died(event)
+  local e = event.entity
+  if not (e and e.valid) then return end
+  if string.sub(e.name, 1, 8) == "mb-plan-" then
+    on_plan_entity_removed(event)
+  elseif e.name == FRAME  then
+    on_frame_removed(event)
+  end
+end
+
+script.on_event(defines.events.on_player_mined_entity, on_mined_or_died)
+script.on_event(defines.events.on_robot_mined_entity, on_mined_or_died)
+script.on_event(defines.events.on_entity_died, on_mined_or_died)
 
 -- ===== обработчик тика =====
 local function on_tick()
   platform_anim.on_tick(game.tick)
 
-  -- Проверка открытых меню каркасов
+  -- Проверка валидности открытых меню (лёгкая, без постоянного сканирования)
   if storage.opened_frames then
     for p_index, data in pairs(storage.opened_frames) do
       local p = game.get_player(p_index)
-      local ent = data.entity
-      if not (p and p.valid and ent and ent.valid) then
+      if not (p and p.valid and p.gui.screen.mb_frame_menu) then
         storage.opened_frames[p_index] = nil
-        if p and p.valid and p.gui.screen.mb_frame_menu then
-          p.gui.screen.mb_frame_menu.destroy()
-        end
-      else
-        if p.character and p.character.valid then
-          local ppos = p.character.position
-          local epos = ent.position
-          local dist_sq = (ppos.x - epos.x)^2 + (ppos.y - epos.y)^2
-          if dist_sq > 100 then
-            close_custom_frame_menu(p)
-          end
-        end
-
-        local inv = ent.get_inventory(defines.inventory.chest)
-        if inv and not inv.is_empty() then
-          enforce_frame_limit_and_check(ent, p)
-        end
       end
     end
   end
@@ -1586,7 +1640,6 @@ local function on_tick()
           job.placed = true
           destroy_frames_at(surface, job.tiles)
 
-          -- Удаляем сущности плана на месте постройки
           local plans = surface.find_entities_filtered{
             area = {{job.rect.minx, job.rect.miny}, {job.rect.minx + job.rect.w, job.rect.miny + job.rect.h}},
           }
@@ -1641,7 +1694,7 @@ local function try_auto_build(e, player)
   local ex = math.floor(e.position.x)
   local ey = math.floor(e.position.y)
 
-  -- Проверяем: привязан ли этот фрейм к активному плану mb-plan-*?
+  -- Проверяем: привязан ли этот фрейм к активному плану?
   local p, p_idx = find_pending_at(e.surface, ex, ey)
   if p then
     local info = rect_info(e.surface, p.rect)
@@ -1661,46 +1714,9 @@ local function try_auto_build(e, player)
     return
   end
 
-  -- Скан свободного кластера фреймов
-  local info = cluster_info(e.surface, ex, ey)
-  if not (info and info.complete and #info.candidates > 0) then
-    local sub_info = resolve_area(e.surface, ex, ey)
-    if sub_info and sub_info.complete then
-      info = sub_info
-    else
-      return
-    end
-  end
-
-  local rect = {minx = info.minx, miny = info.miny, w = info.w, h = info.h}
-
-  -- Лежит ли уже предмет здания в фрейме или сундуке?
-  local found_target
-  for _, name in ipairs(info.candidates or {}) do
-    if find_resource_source(e.surface, rect, name, nil) then
-      found_target = name
-      break
-    end
-  end
-
-  if found_target then
-    local s = target_sizes()[found_target]
-    local b_dir = defines.direction.north
-    if s and info.w == s.h and info.h == s.w then
-      b_dir = defines.direction.east
-    end
-    start_build(e.surface, found_target, info, e.force, nil, nil, b_dir)
-  elseif info.candidates and #info.candidates == 1 then
-    local cand = info.candidates[1]
-    local s = target_sizes()[cand]
-    local b_dir = defines.direction.north
-    if s and info.w == s.h and info.h == s.w then
-      b_dir = defines.direction.east
-    end
-    add_pending(e.surface, info, cand, e.force, player, nil, b_dir)
-  elseif player then
-    ftext(e.surface, e.position, {"multibuild.auto-hint"}, {r = 0.6, g = 0.9, b = 1})
-  end
+  -- Без инструмента выделения или активного плана автоматический тяжелый скан не производится!
+  -- ВАЖНО: больше НЕ вызываем add_pending() автоматически на пустые каркасы без предмета!
+  -- План создаётся только игроком явно (через меню каркаса, чертёж или пипетку).
 end
 
 -- ===== обработчики постройки сущностей =====
@@ -1747,12 +1763,11 @@ local function on_entity_placed(event)
     local miny = math.floor(cy - fh / 2 + 0.001)
     local surface = e.surface
 
-    -- Проверяем, есть ли под призраком фреймы (готовые или призраки каркаса)
     local has_frame = false
     for x = minx, minx + fw - 1 do
       for y = miny, miny + fh - 1 do
         local pos = {x + 0.5, y + 0.5}
-        if surface.find_entity(FRAME, pos) or surface.find_entity(STORAGE, pos) then
+        if surface.find_entity(FRAME, pos) then
           has_frame = true
           break
         end
@@ -1796,24 +1811,10 @@ local function on_entity_placed(event)
     return
   end
 
-  -- 3) Зелёный сундук запроса
-  if e.name == STORAGE then
-    local stx = math.floor(e.position.x)
-    local sty = math.floor(e.position.y)
-    for _, p in ipairs(storage.pendings or {}) do
-      if p.surface == e.surface then
-        if stx >= p.rect.minx - 1 and stx <= p.rect.minx + p.rect.w
-           and sty >= p.rect.miny - 1 and sty <= p.rect.miny + p.rect.h then
-          set_entity_request(e, p.target, 1)
-        end
-      end
-    end
+  if e.name == FRAME then
+    try_auto_build(e, event.player_index and game.get_player(event.player_index) or nil)
     return
   end
-
-  if e.name ~= FRAME then return end
-
-  try_auto_build(e, event.player_index and game.get_player(event.player_index) or nil)
 end
 
 script.on_event(defines.events.on_built_entity, on_entity_placed)
@@ -1822,126 +1823,7 @@ if defines.events.on_space_platform_built_entity then
   script.on_event(defines.events.on_space_platform_built_entity, on_entity_placed)
 end
 
--- разборка каркаса отменяет план и закрывает открытые меню
-local function on_frame_or_storage_removed(event)
-  local e = event.entity
-  if not (e and e.valid) then return end
-  if e.name ~= FRAME and e.name ~= STORAGE then return end
-
-  if storage.opened_frames then
-    for p_index, data in pairs(storage.opened_frames) do
-      if data.entity == e or not (data.entity and data.entity.valid) then
-        local p = game.get_player(p_index)
-        if p and p.valid then
-          close_custom_frame_menu(p)
-        end
-      end
-    end
-  end
-
-  local ex = math.floor(e.position.x)
-  local ey = math.floor(e.position.y)
-  local pendings = storage.pendings or {}
-  for i = #pendings, 1, -1 do
-    local p = pendings[i]
-    if p.surface == e.surface then
-      if ex >= p.rect.minx and ex < p.rect.minx + p.rect.w
-         and ey >= p.rect.miny and ey < p.rect.miny + p.rect.h then
-        drop_pending(i)
-      end
-    end
-  end
-end
-
-script.on_event(defines.events.on_player_mined_entity, on_frame_or_storage_removed)
-script.on_event(defines.events.on_robot_mined_entity, on_frame_or_storage_removed)
-script.on_event(defines.events.on_entity_died, on_frame_or_storage_removed)
-
--- ===== GUI: полноэкранное прозрачное меню (для маркера области) =====
-local function close_menu(player)
-  local gui = player.gui.screen.mb_menu
-  if gui then gui.destroy() end
-  storage.menus[player.index] = nil
-end
-
-local function open_menu(player, ctx, candidates, current_plan)
-  close_menu(player)
-  storage.menus[player.index] = ctx
-
-  local frame = player.gui.screen.add{
-    type = "frame",
-    name = "mb_menu",
-    style = "mb_transparent_frame",
-    direction = "vertical",
-  }
-  frame.auto_center = true
-  frame.add{type = "label", caption = {"multibuild.menu-title"}, style = "frame_title"}
-
-  if current_plan then
-    frame.add{
-      type = "label",
-      caption = {"multibuild.current-plan", {"entity-name." .. current_plan}},
-      style = "bold_label",
-    }
-  end
-
-  local grid = frame.add{type = "table", column_count = 6}
-  for _, name in ipairs(candidates) do
-    local b = grid.add{
-      type = "sprite-button",
-      sprite = "entity/" .. name,
-      style = "slot_button",
-      tooltip = {"entity-name." .. name},
-    }
-    b.tags = {mb_target = name}
-  end
-
-  if COST_FROM_INVENTORY then
-    frame.add{type = "label", caption = {"multibuild.cost-hint"}}
-  end
-
-  local bflow = frame.add{type = "flow", direction = "horizontal"}
-  bflow.add{type = "button", name = "mb_menu_close", caption = {"multibuild.menu-close"}}
-  if current_plan then
-    bflow.add{type = "button", name = "mb_menu_cancel_plan", caption = {"multibuild.cancel-plan"}}
-  end
-
-  player.opened = frame
-end
-
-local function click_flow(surface, tx, ty, player, force)
-  local build_info, candidates, raw = resolve_area(surface, tx, ty)
-  if not raw then return end
-  local pos = {tx + 0.5, ty + 0.5}
-
-  if not candidates or #candidates == 0 then
-    if raw.complete then
-      ftext(surface, pos, {"multibuild.no-candidate", raw.w, raw.h})
-    else
-      ftext(surface, pos, {"multibuild.not-rectangle", raw.count, raw.w, raw.h})
-    end
-    return
-  end
-
-  local existing_plan = find_pending_at(surface, tx, ty)
-  local current_target = existing_plan and existing_plan.target or nil
-
-  if #candidates == 1 then
-    local target = candidates[1]
-    local s = target_sizes()[target]
-    local b_dir = defines.direction.north
-    if s and build_info.w == s.h and build_info.h == s.w then
-      b_dir = defines.direction.east
-    end
-    start_build(surface, target, build_info, force, player, nil, b_dir)
-  else
-    open_menu(player, {mode = "frame", surface_index = surface.index, tx = tx, ty = ty}, candidates, current_target)
-  end
-end
-
--- Клик по блоку каркаса:
--- если с маркером SELECTOR в руках -> меню маркера
--- без маркера -> открывается прозрачное компактное меню каркаса с 1 слотом
+-- ===== GUI EVENTS =====
 script.on_event(defines.events.on_gui_opened, function(event)
   local entity = event.entity
   if not (entity and entity.valid) then return end
@@ -1949,39 +1831,34 @@ script.on_event(defines.events.on_gui_opened, function(event)
   if not player then return end
 
   if entity.name == FRAME then
+    -- Запрещаем открытие стандартного меню сундука/каркаса
+    player.opened = nil
+
+    -- Кладём инструмент выделения прямо в курсор игрока
     local cs = player.cursor_stack
-    if cs and cs.valid_for_read and cs.name == SELECTOR then
-      player.opened = nil
-      click_flow(entity.surface, math.floor(entity.position.x), math.floor(entity.position.y), player, entity.force)
-      return
+    if cs and (not cs.valid_for_read or cs.name ~= SELECTOR) then
+      local pinv = player.get_main_inventory()
+      local found_item = pinv and pinv.find_item_stack(SELECTOR)
+      if found_item and found_item.valid_for_read then
+        player.clear_cursor()
+        player.cursor_stack.transfer_stack(found_item)
+      else
+        player.clear_cursor()
+        player.cursor_stack.set_stack({name = SELECTOR, count = 1})
+      end
     end
-
-    open_custom_frame_menu(player, entity)
-    return
   end
+end)
 
-  if string.sub(entity.name, 1, 8) == "mb-plan-" then
-    -- Клик по сущности плана: открываем меню для отмены или замены плана
-    local target = string.sub(entity.name, 9)
-    if string.sub(target, -4) == "-rot" then
-      target = string.sub(target, 1, -5)
-    end
-    local s = target_sizes()[target]
-    if s then
-      local is_rot = is_east_west(entity.direction)
-      local fw = is_rot and s.h or s.w
-      local fh = is_rot and s.w or s.h
-      local tx = math.floor(entity.position.x - fw / 2 + 0.001)
-      local ty = math.floor(entity.position.y - fh / 2 + 0.001)
-      local cx_frame = tx + math.floor((fw - 1) / 2)
-      local cy_frame = ty + math.floor((fh - 1) / 2)
-      local f = entity.surface.find_entity(FRAME, {cx_frame + 0.5, cy_frame + 0.5})
-      if not f then
-        f = entity.surface.find_entity(FRAME, {tx + 0.5, ty + 0.5})
-      end
-      if f then
-        open_custom_frame_menu(player, f)
-      end
+script.on_event(defines.events.on_gui_closed, function(event)
+  local player = game.get_player(event.player_index)
+  if not player then return end
+
+  if event.element and event.element.valid then
+    if event.element.name == "mb_frame_menu" then
+      close_custom_frame_menu(player)
+    elseif event.element.name == "mb_plan_catalog_menu" then
+      close_plan_catalog_menu(player)
     end
   end
 end)
@@ -1992,9 +1869,59 @@ script.on_event(defines.events.on_gui_click, function(event)
   local player = game.get_player(event.player_index)
   if not player then return end
 
-  -- Кнопки кастомного меню каркаса
   if el.name == "mb_frame_menu_close" then
     close_custom_frame_menu(player)
+    return
+  end
+
+  if el.name == "mb_plan_catalog_close" then
+    close_plan_catalog_menu(player)
+    return
+  end
+
+  if el.tags and el.tags.mb_catalog_target then
+    local target = el.tags.mb_catalog_target
+    close_plan_catalog_menu(player)
+
+    local s = target_sizes()[target]
+    if not s then return end
+
+    -- Создаем настоящий чертёж с ПРИКРЕПЛЁННЫМИ КАРКАСАМИ-СУНДУКАМИ
+    -- Игра протягивает чертёж нативно, размещая план и все сундуки одновременно без шлейфа и пропусков!
+    player.clear_cursor()
+    local cs = player.cursor_stack
+    if cs then
+      cs.set_stack{name = "blueprint", count = 1}
+      local bp_entities = {}
+      local ent_num = 1
+
+      -- 1) Сущность плана в центре чертежа
+      bp_entities[#bp_entities + 1] = {
+        entity_number = ent_num,
+        name = "mb-plan-" .. target,
+        position = {0, 0},
+      }
+      ent_num = ent_num + 1
+
+      -- 2) Прикреплённые каркасы под всеми клетками чертежа
+      local half_w = s.w / 2
+      local half_h = s.h / 2
+      for x = 0, s.w - 1 do
+        for y = 0, s.h - 1 do
+          local rel_x = x - half_w + 0.5
+          local rel_y = y - half_h + 0.5
+          bp_entities[#bp_entities + 1] = {
+            entity_number = ent_num,
+            name = FRAME,
+            position = {rel_x, rel_y},
+          }
+          ent_num = ent_num + 1
+        end
+      end
+
+      cs.set_blueprint_entities(bp_entities)
+      cs.label = target
+    end
     return
   end
 
@@ -2004,7 +1931,7 @@ script.on_event(defines.events.on_gui_click, function(event)
     if surface and tags.mb_tx and tags.mb_ty then
       local p, idx = find_pending_at(surface, tags.mb_tx, tags.mb_ty)
       if p then
-        drop_pending(idx)
+        drop_pending(idx, true)
         ftext(player.surface, player.position, {"multibuild.plan-cancelled"}, {r = 1, g = 0.5, b = 0.5})
       end
     end
@@ -2023,27 +1950,42 @@ script.on_event(defines.events.on_gui_click, function(event)
     local surface = tags.mb_surface and game.get_surface(tags.mb_surface) or player.surface
     if not surface then return end
 
-    local build_info = find_building_rect_at(surface, tags.mb_tx, tags.mb_ty, target)
-    if not build_info then
-      build_info = resolve_area(surface, tags.mb_tx, tags.mb_ty)
-    end
-
     local s = target_sizes()[target]
+    local build_info = nil
     local b_dir = defines.direction.north
-    if build_info and s then
-      if build_info.w == s.h and build_info.h == s.w then
+
+    if tags.mb_minx and tags.mb_w then
+      build_info = {
+        minx = tags.mb_minx,
+        miny = tags.mb_miny,
+        w = tags.mb_w,
+        h = tags.mb_h,
+        count = tags.mb_w * tags.mb_h,
+        complete = true,
+        cluster = {},
+      }
+      if s and build_info.w == s.h and build_info.h == s.w then
         b_dir = defines.direction.east
       end
-    end
-
-    if not (build_info and build_info.complete) then
-      if s then
-        local minx = tags.mb_tx - math.floor((s.w - 1) / 2)
-        local miny = tags.mb_ty - math.floor((s.h - 1) / 2)
-        build_info = {
-          minx = minx, miny = miny, w = s.w, h = s.h,
-          count = s.w * s.h, complete = false, cluster = {},
-        }
+    else
+      build_info = find_building_rect_at(surface, tags.mb_tx, tags.mb_ty, target)
+      if not build_info then
+        build_info = resolve_area(surface, tags.mb_tx, tags.mb_ty)
+      end
+      if build_info and s then
+        if build_info.w == s.h and build_info.h == s.w then
+          b_dir = defines.direction.east
+        end
+      end
+      if not (build_info and build_info.complete) then
+        if s then
+          local minx = tags.mb_tx - math.floor((s.w - 1) / 2)
+          local miny = tags.mb_ty - math.floor((s.h - 1) / 2)
+          build_info = {
+            minx = minx, miny = miny, w = s.w, h = s.h,
+            count = s.w * s.h, complete = false, cluster = {},
+          }
+        end
       end
     end
 
@@ -2055,101 +1997,20 @@ script.on_event(defines.events.on_gui_click, function(event)
     if ent and ent.valid and player.gui.screen.mb_frame_menu then
       open_custom_frame_menu(player, ent)
     end
-    return
-  end
-
-  -- Кнопки полноэкранного меню маркера
-  if el.name == "mb_menu_close" then
-    close_menu(player)
-    clear_selection(player)
-    return
-  end
-
-  local ctx = storage.menus[player.index]
-
-  if el.name == "mb_menu_cancel_plan" then
-    close_menu(player)
-    clear_selection(player)
-    if ctx then
-      local surface = game.get_surface(ctx.surface_index)
-      if surface then
-        local rect = ctx.rect
-        if not rect and ctx.tx and ctx.ty then
-          local p, idx = find_pending_at(surface, ctx.tx, ctx.ty)
-          if p then drop_pending(idx) end
-        elseif rect then
-          local p, idx = find_pending_for_rect(surface, rect)
-          if p then drop_pending(idx) end
-        end
-        ftext(player.surface, player.position, {"multibuild.plan-cancelled"}, {r = 1, g = 0.5, b = 0.5})
-      end
-    end
-    return
-  end
-
-  local target = el.tags and el.tags.mb_target
-  if not target then return end
-
-  close_menu(player)
-  clear_selection(player)
-  if not ctx then return end
-  local surface = game.get_surface(ctx.surface_index)
-  if not surface then return end
-
-  local build_info
-  if ctx.mode == "rect" then
-    build_info = rect_info(surface, ctx.rect)
-    if not build_info.complete then
-      ftext(surface, {ctx.rect.minx + 0.5, ctx.rect.miny + 0.5}, {"multibuild.rect-missing", build_info.missing})
-      return
-    end
-  else
-    build_info = find_building_rect_at(surface, ctx.tx, ctx.ty, target) or resolve_area(surface, ctx.tx, ctx.ty)
-    if not build_info then
-      ftext(player.surface, player.position, {"multibuild.gone"})
-      return
-    end
-  end
-
-  local s = target_sizes()[target]
-  if not (s and ((s.w == build_info.w and s.h == build_info.h) or (s.w == build_info.h and s.h == build_info.w))) then
-    ftext(player.surface, player.position, {"multibuild.size-mismatch"})
-    return
-  end
-  local b_dir = defines.direction.north
-  if s and build_info.w == s.h and build_info.h == s.w then
-    b_dir = defines.direction.east
-  end
-  start_build(surface, target, build_info, player.force, player, nil, b_dir)
-end)
-
-script.on_event(defines.events.on_gui_closed, function(event)
-  local player = game.get_player(event.player_index)
-  if not player then return end
-
-  if event.element and event.element.valid and event.element.name == "mb_frame_menu" then
-    close_custom_frame_menu(player)
-    return
-  end
-
-  if event.element and event.element.valid and event.element.name == "mb_menu" then
-    event.element.destroy()
-    storage.menus[event.player_index] = nil
-    clear_selection(player)
-    return
-  end
-
-  if event.entity and event.entity.valid and event.entity.name == FRAME then
-    enforce_frame_limit_and_check(event.entity, player)
   end
 end)
 
--- ===== маркер области =====
+script.on_event(defines.events.on_player_left_game, function(event)
+  if storage.opened_frames then
+    storage.opened_frames[event.player_index] = nil
+  end
+end)
+
+-- ===== ИНСТРУМЕНТ ВЫБОРА ОБЛАСТИ (SELECTOR TOOL) =====
 local function toggle_area_tool(player)
   local cs = player.cursor_stack
   if cs and cs.valid_for_read and cs.name == SELECTOR then
     cs.clear()
-    clear_selection(player)
     return
   end
   if not player.clear_cursor() then
@@ -2157,7 +2018,6 @@ local function toggle_area_tool(player)
     return
   end
   player.cursor_stack.set_stack({name = SELECTOR, count = 1})
-  clear_selection(player)
 end
 
 script.on_event(defines.events.on_lua_shortcut, function(event)
@@ -2184,74 +2044,119 @@ local function rect_from_area(area)
   return {minx = minx, miny = miny, w = maxx - minx + 1, h = maxy - miny + 1}
 end
 
+-- ЛКМ: Выделение области инструментом выбора
 script.on_event(defines.events.on_player_selected_area, function(event)
   if event.item ~= SELECTOR then return end
   local player = game.get_player(event.player_index)
   if not player then return end
   local surface = player.surface
+
+  -- Определяем точную область выделения по рамке
   local rect = rect_from_area(event.area)
-  clear_selection(player)
 
-  if rect.w == 1 and rect.h == 1 then
-    click_flow(surface, rect.minx, rect.miny, player, player.force)
-    return
-  end
-
-  local info = rect_info(surface, rect)
-  local candidates = candidates_for_size(rect.w, rect.h)
-  if #candidates == 0 then
-    ftext(surface, {rect.minx + rect.w / 2, rect.miny + rect.h / 2}, {"multibuild.no-candidate", rect.w, rect.h})
-    return
-  end
-
-  local existing_plan = find_pending_for_rect(surface, rect)
-  local current_target = existing_plan and existing_plan.target or nil
-
-  if #candidates == 1 then
-    local target = candidates[1]
-    local s = target_sizes()[target]
-    local b_dir = defines.direction.north
-    if s and rect.w == s.h and rect.h == s.w then
-      b_dir = defines.direction.east
+  -- Если выделены каркасы в event.entities, проверяем границы выделенных каркасов
+  local frames_in_sel = {}
+  if event.entities then
+    for _, ent in ipairs(event.entities) do
+      if ent.valid and ent.name == FRAME then
+        frames_in_sel[#frames_in_sel + 1] = ent
+      end
     end
-    start_build(surface, target, info, player.force, player, nil, b_dir)
-  else
-    open_menu(player, {mode = "rect", surface_index = surface.index, rect = rect}, candidates, current_target)
   end
+
+  if #frames_in_sel > 0 then
+    local f_minx, f_miny, f_maxx, f_maxy = math.huge, math.huge, -math.huge, -math.huge
+    for _, fe in ipairs(frames_in_sel) do
+      local fx = math.floor(fe.position.x)
+      local fy = math.floor(fe.position.y)
+      if fx < f_minx then f_minx = fx end
+      if fy < f_miny then f_miny = fy end
+      if fx > f_maxx then f_maxx = fx end
+      if fy > f_maxy then f_maxy = fy end
+    end
+    rect = {
+      minx = f_minx,
+      miny = f_miny,
+      w = f_maxx - f_minx + 1,
+      h = f_maxy - f_miny + 1,
+    }
+  end
+
+  -- 1) Если выделена одна клетка (клик по тайлу)
+  if rect.w == 1 and rect.h == 1 then
+    local pos = {rect.minx + 0.5, rect.miny + 0.5}
+    local f = surface.find_entity(FRAME, pos)
+    if f and f.valid then
+      open_custom_frame_menu(player, f, rect)
+      return
+    end
+
+    -- Проверяем наличие плана на этом тайле
+    local p_plan = find_pending_at(surface, rect.minx, rect.miny)
+    if p_plan and p_plan.plan_entity and p_plan.plan_entity.valid then
+      return
+    end
+
+    -- Клик по пустому тайлу: отслеживаем двойной клик (в пределах 35 тиков ~0.58 сек)
+    storage.tile_clicks = storage.tile_clicks or {}
+    local last_click = storage.tile_clicks[player.index]
+    local current_tick = event.tick or game.tick
+
+    if last_click and (current_tick - last_click.tick) <= 35
+       and math.abs(last_click.x - rect.minx) <= 1
+       and math.abs(last_click.y - rect.miny) <= 1
+       and last_click.surface_index == surface.index then
+      storage.tile_clicks[player.index] = nil
+      open_plan_catalog_menu(player, {x = rect.minx, y = rect.miny})
+      return
+    else
+      storage.tile_clicks[player.index] = {
+        tick = current_tick,
+        x = rect.minx,
+        y = rect.miny,
+        surface_index = surface.index,
+      }
+    end
+    return
+  end
+
+  -- 2) Выделена прямоугольная область каркасов
+  local cands = candidates_for_size(rect.w, rect.h)
+
+  -- Находим каркас внутри выделенной области для открытия меню
+  local cx = math.floor(rect.minx + rect.w / 2)
+  local cy = math.floor(rect.miny + rect.h / 2)
+  local target_frame = surface.find_entity(FRAME, {cx + 0.5, cy + 0.5})
+  if not target_frame then
+    for x = rect.minx, rect.minx + rect.w - 1 do
+      for y = rect.miny, rect.miny + rect.h - 1 do
+        local f = surface.find_entity(FRAME, {x + 0.5, y + 0.5})
+        if f and f.valid then
+          target_frame = f
+          break
+        end
+      end
+      if target_frame then break end
+    end
+  end
+
+  if not target_frame then
+    ftext(surface, {rect.minx + rect.w / 2, rect.miny + rect.h / 2}, {"multibuild.size-mismatch"}, {r = 1, g = 0.5, b = 0.3})
+    return
+  end
+
+  -- Открываем меню строго для выделенного прямоугольника rect
+  open_custom_frame_menu(player, target_frame, rect)
 end)
 
+-- ПКМ (Alt-действие): Открытие меню выбора чертежа здания
 script.on_event(defines.events.on_player_alt_selected_area, function(event)
   if event.item ~= SELECTOR then return end
   local player = game.get_player(event.player_index)
   if not player then return end
-  clear_selection(player)
 
   local rect = rect_from_area(event.area)
-  local pendings = storage.pendings or {}
-  local cancelled = 0
-  for i = #pendings, 1, -1 do
-    local p = pendings[i]
-    if p.surface == player.surface and rects_overlap(rect, p.rect) then
-      drop_pending(i)
-      cancelled = cancelled + 1
-    end
-  end
-  if cancelled > 0 then
-    ftext(player.surface, {rect.minx + rect.w / 2, rect.miny + rect.h / 2},
-      {"multibuild.plan-cancelled"}, {r = 1, g = 0.5, b = 0.5})
-  end
-end)
-
-script.on_event(defines.events.on_player_left_game, function(event)
-  if storage.opened_frames then
-    storage.opened_frames[event.player_index] = nil
-  end
-  if storage.menus then
-    storage.menus[event.player_index] = nil
-  end
-  if storage.sel then
-    storage.sel[event.player_index] = nil
-  end
+  open_plan_catalog_menu(player, {x = rect.minx, y = rect.miny})
 end)
 
 -- ===== storage & commands =====
@@ -2283,12 +2188,8 @@ end)
 
 script.on_init(function()
   storage.jobs = {}
-  storage.menus = {}
-  storage.panim_tasks = {}
-  storage.sel = {}
   storage.pendings = {}
   storage.opened_frames = {}
-  storage.ghost_plans = {}
   storage.pending_recipes = {}
   storage.debug_enabled = false
   pcall(function() rendering.clear("multibuild") end)
@@ -2296,12 +2197,8 @@ end)
 
 script.on_configuration_changed(function()
   storage.jobs = storage.jobs or {}
-  storage.menus = storage.menus or {}
-  storage.panim_tasks = storage.panim_tasks or {}
-  storage.sel = storage.sel or {}
   storage.pendings = storage.pendings or {}
   storage.opened_frames = storage.opened_frames or {}
-  storage.ghost_plans = storage.ghost_plans or {}
   storage.pending_recipes = storage.pending_recipes or {}
   if storage.debug_enabled == nil then
     storage.debug_enabled = false
@@ -2314,12 +2211,5 @@ script.on_configuration_changed(function()
       end
       p.render_obj = nil
     end
-  end
-  if storage.storages then
-    for _, z in pairs(storage.storages) do
-      if z.fill then pcall(rendering.destroy, z.fill) end
-      if z.line then pcall(rendering.destroy, z.line) end
-    end
-    storage.storages = nil
   end
 end)

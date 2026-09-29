@@ -418,6 +418,15 @@ data:extend({ssc_turbine})
 
 
 
+
+
+
+
+
+
+
+
+
 function clone_entity(source_type, source_name, new_name, overrides, to_remove)
     local source = data.raw[source_type][source_name]
     if not source then return nil end
@@ -582,70 +591,3 @@ data:extend({
     vertical_window_bounding_box = {{-0.28125, -0.5}, {0.03125, 0.125}}
   },
 })
-
-
-
-
-
-
-
-
--- ==========================================================
--- ШАГ 1: Создаем новый тайл лавы на основе оригинальной
--- ==========================================================
-local base_lava = data.raw["tile"]["lava"]
-local empty_space = data.raw["tile"]["out-of-map"] or data.raw["tile"]["empty-space"]
-
-if base_lava and empty_space then
-    -- Делаем полную копию лавы
-    local new_lava = table.deepcopy(base_lava)
-    
-    -- Задаем новое имя
-    new_lava.name = "new-lava"
-    
-    -- Копируем маску коллизий пустоты (САМОЕ ГЛАВНОЕ ДЛЯ РАЗМЕЩЕНИЯ ОБШИВКИ)
-    new_lava.collision_mask = table.deepcopy(empty_space.collision_mask)
-    
-    -- Делаем недобываемой и непроходимой (как пустота)
-    new_lava.minable = nil
-    new_lava.walkable = false
-    
-    -- Добавляем новый тайл в игру
-    data:extend({new_lava})
-end
-
-
--- ==========================================================
--- ШАГ 2: Учим обшивку рисоваться рядом с новой лавой
--- ==========================================================
-local plating = data.raw["tile"]["space-platform-foundation"]
-
-if plating and plating.transitions then
-    for _, transition_group in pairs(plating.transitions) do
-        if transition_group.to_tiles then
-            -- Ищем переходы, которые обшивка делает к пустоте
-            local is_void_transition = false
-            for _, to_tile in ipairs(transition_group.to_tiles) do
-                if to_tile == "out-of-map" or to_tile == "empty-space" then
-                    is_void_transition = true
-                    break
-                end
-            end
-            
-            -- Добавляем нашу лаву в этот же список переходов
-            if is_void_transition then
-                table.insert(transition_group.to_tiles, "new-lava")
-            end
-        end
-    end
-end
-
-
--- ==========================================================
--- ШАГ 3: Разрешаем класть обшивку на планетах (а не только в космосе)
--- ==========================================================
-local plating_item = data.raw["item"]["space-platform-foundation"]
-if plating_item then
-    -- Удаляем ограничение на гравитацию/поверхность
-    plating_item.surface_conditions = nil
-end

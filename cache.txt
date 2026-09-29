@@ -1588,3 +1588,152 @@ return {
   PENDING_POLL_TICKS = PENDING_POLL_TICKS,
   TARGETS = TARGETS,
 }
+
+
+
+
+--sk-teamo-57d2ee8a9028341198dd87fb9fdde0b0d6a7b3d380c8d797
+
+
+
+
+{
+    "workbench.activityBar.location": "top",
+    "explorer.confirmDragAndDrop": false,
+    "explorer.confirmDelete": false,
+    "git.autofetch": true,
+    "editor.fontFamily": "Monocraft, Consolas, monospace",
+    "terminal.integrated.fontFamily": "Monocraft",
+    "markdown.preview.fontFamily": "Monocraft",
+
+    // Варианты: "blink" (обычный), "smooth" (плавное затухание), "phase" (быстрое появление), "expand" (пульсация), "solid" (не мигает)
+    "editor.cursorBlinking": "expand",
+    "editor.cursorStyle": "line",
+    "editor.cursorWidth": 2,
+    "editor.cursorSmoothCaretAnimation": "on",
+
+
+    "workbench.colorCustomizations": {
+
+        "editorCursor.foreground": "#d5e0e7",
+        "editorCursor.background": "#000000",
+
+        "editor.background": "#000000",          // Фон рабочей зоны
+        "editor.foreground": "#ffffff",          // Базовый цвет текста
+
+        // 2. Боковая панель (Explorer / Проводник со списком файлов)
+        "sideBar.background": "#000000",         // Фон боковой панели
+        "sideBar.foreground": "#cccccc",         // Цвет текста файлов в панели
+        "sideBar.border": "#000000",             // Цвет вертикальной границы панели
+
+        // 3. Вкладки открытых файлов (Сверху)
+        "tab.activeBackground": "#000000",       // Фон активной (выбранной) вкладки
+        "tab.activeForeground": "#ffffff",       // Цвет текста активной вкладки
+        "tab.inactiveBackground": "#000000",     // Фон неактивных вкладок
+        "tab.inactiveForeground": "#555555",     // ИСПРАВЛЕНО: Было #000000 (черный текст на черном фоне был невидим). Теперь он темно-серый.
+        "tab.border": "#000000",                 // Границы между вкладками
+
+        // 4. Панель активности (Самая крайняя узкая полоса слева с иконками)
+        "activityBar.background": "#000000",     // Фон панели иконок
+        "activityBar.foreground": "#ffffff",     // Цвет активной иконки
+        "activityBar.inactiveForeground": "#858585", // Цвет неактивных иконок
+
+        // 5. Нижняя строка состояния (Status Bar)
+        "statusBar.background": "#000000",       // Фон строки состояния внизу
+        "statusBar.foreground": "#ffffff",       // Цвет текста в строке состояния
+
+        // 6. Терминал / Вывод (Нижнее окно)
+        "panel.background": "#000000",           // Фон нижнего окна (терминала)
+        "panel.border": "#000000",               // Верхняя граница нижнего окна
+
+        // 7. Строка поиска и палитра команд (Всплывающее окно сверху)
+        "quickInput.background": "#000000",      // Фон всплывающего окна команд
+        "quickInput.foreground": "#cccccc"       // Цвет текста в нем
+    },
+
+    "editor.tokenColorCustomizations": {
+        "comments": "#7c817a", // Изменит цвет всех комментариев на зеленый
+        "functions": "#ff0000", // Изменит цвет вызова функций на красный
+
+        "textMateRules": [
+            {
+                // Цвет для ключевых слов (local, function, if, end, return)
+                "scope": "keyword.control.lua",
+                "settings": {
+                    "foreground": "#b87613"
+                    //"fontStyle": "bold"
+                }
+            },
+            {
+                // Цвет для логических операторов (or, and, not)
+                "scope": "keyword.operator.logical.lua",
+                "settings": {
+                    "foreground": "#ffffff"
+                    //"fontStyle": "bold"
+                }
+            },
+            {
+                // Цвет для вызовов функций (например, log(), print(), pairs())
+                "scope": "support.function.lua, entity.name.function.lua",
+                "settings": {
+                    "foreground": "#fa0000"
+                }
+            },
+            {
+                // Цвет для встроенных библиотек и глобальных таблиц (table, math, string, pairs)
+                "scope": "support.tabs.lua", 
+                "settings": {
+                    "foreground": "#96d5ff"
+                }
+            },
+            {
+                // Цвет для обычных переменных (включая size, если она объявлена как local size)
+                "scope": "variable.other.local.lua, variable.other.readwrite.lua",
+                "settings": {
+                    "foreground": "#339c79"
+                }
+            },
+            {
+                // Цвет для имен переменных и объектов (space_asm, space_asm_it)
+                "scope": "variable.other.lua",
+                "settings": {
+                    "foreground": "#7292cc"
+                }
+            },
+            {
+                // Цвет для свойств через точку (.name, .recipe, .status)
+                "scope": "variable.other.property.lua",
+                "settings": {
+                    "foreground": "#fac286"
+                }
+            }
+        ]
+    },
+    
+    "workbench.editorAssociations": {
+        "*.bin": "hexEditor.hexedit"
+    },
+    "files.autoSave": "afterDelay",
+    "factorio.docs.usePrototypeDumps": true,
+    "http.noProxy": [
+        ""
+    ],
+    "workbench.colorTheme": "X",
+    "omnicopilot.baseUrl": "http://localhost:20128/api/v1/vscode/sk-967993dde2a679d2-c4916d-15e9b754",
+
+}
+
+
+
+curl https://api.orcarouter.ai/v1/chat/completions \
+  -H "Authorization: Bearer sk-orca-BdslthVkxOSEkl59EqbbWAYzvjMdOxvFhTaTtc2Wbxk" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "orcarouter/auto",
+    "messages": [{"role":"user","content":"Hello, OrcaRouter!"}]
+  }'
+
+
+
+
+  sk-orca-BdslthVkxOSEkl59EqbbWAYzvjMdOxvFhTaTtc2Wbxk

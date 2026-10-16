@@ -99,7 +99,7 @@ local frame_recipe = {
   allow_productivity = false,
 }
 
--- ===== инструмент выбора области постройки =====
+-- ===== инструмент выбора области постройки (selection-tool) =====
 local selector = {
   type = "selection-tool",
   name = SELECTOR,
@@ -117,9 +117,9 @@ local selector = {
     cursor_box_type = "entity",
     mode = {"any-tile", "any-entity"},
   },
-  alt_select = {          -- ПКМ: открытие меню каталога чертежей
-    border_color = {r = 0.2, g = 0.85, b = 1.0, a = 1.0},
-    cursor_box_type = "entity",
+  alt_select = {
+    border_color = {r = 1.0, g = 0.4, b = 0.4, a = 1.0},
+    cursor_box_type = "not-allowed",
     mode = {"any-tile", "any-entity"},
   },
 }
@@ -151,6 +151,8 @@ local shortcut = {
   disabled_small_icon = "__base__/graphics/icons/blueprint.png",
 }
 
+
+
 local hotkey = {
   type = "custom-input",
   name = "mb-area-toggle",
@@ -178,6 +180,70 @@ data:extend({
 local plan_entities = {}
 local plan_items = {}
 
+local function make_plan_layers(sw, sh, icons, icon, icon_size)
+  local layers = {}
+  local corner_scale = 1.0
+  local x_off = (sw / 2) - 0.25
+  local y_off = (sh / 2) - 0.25
+
+  -- 1) Угловые рамки выделения точно по габариту (sw x sh)
+  table.insert(layers, {
+    filename = "__core__/graphics/cursor-boxes-32x32.png",
+    x = 0, y = 0, width = 32, height = 32,
+    shift = {-x_off, -y_off},
+    scale = corner_scale,
+    tint = {r = 0.2, g = 0.85, b = 1.0, a = 0.95},
+    render_layer = "cursor",
+  })
+  table.insert(layers, {
+    filename = "__core__/graphics/cursor-boxes-32x32.png",
+    x = 32, y = 0, width = 32, height = 32,
+    shift = {x_off, -y_off},
+    scale = corner_scale,
+    tint = {r = 0.2, g = 0.85, b = 1.0, a = 0.95},
+    render_layer = "cursor",
+  })
+  table.insert(layers, {
+    filename = "__core__/graphics/cursor-boxes-32x32.png",
+    x = 0, y = 32, width = 32, height = 32,
+    shift = {-x_off, y_off},
+    scale = corner_scale,
+    tint = {r = 0.2, g = 0.85, b = 1.0, a = 0.95},
+    render_layer = "cursor",
+  })
+  table.insert(layers, {
+    filename = "__core__/graphics/cursor-boxes-32x32.png",
+    x = 32, y = 32, width = 32, height = 32,
+    shift = {x_off, y_off},
+    scale = corner_scale,
+    tint = {r = 0.2, g = 0.85, b = 1.0, a = 0.95},
+    render_layer = "cursor",
+  })
+
+  -- 2) Иконка целевого здания в центре
+  if icons then
+    for _, ic in ipairs(icons) do
+      table.insert(layers, {
+        filename = ic.icon,
+        size = ic.icon_size or icon_size,
+        scale = (0.5 + math.min(sw, sh) * 0.22) * (ic.scale or 1),
+        tint = ic.tint or {r = 1, g = 1, b = 1, a = 0.88},
+        shift = ic.shift or {0, 0},
+        render_layer = "cursor",
+      })
+    end
+  elseif icon then
+    table.insert(layers, {
+      filename = icon,
+      size = icon_size,
+      scale = 0.5 + math.min(sw, sh) * 0.22,
+      tint = {r = 1, g = 1, b = 1, a = 0.88},
+      render_layer = "cursor",
+    })
+  end
+
+  return layers
+end
 for _, target_name in ipairs(shared.TARGETS) do
   local proto = nil
   for _, cat_table in pairs(data.raw) do
@@ -192,7 +258,6 @@ for _, target_name in ipairs(shared.TARGETS) do
 
   if proto then
     local sbox = proto.selection_box and util.table.deepcopy(proto.selection_box) or {{-1.5, -1.5}, {1.5, 1.5}}
-    local cbox = proto.collision_box and util.table.deepcopy(proto.collision_box)
     local icon = proto.icon
     local icons = proto.icons and util.table.deepcopy(proto.icons)
     local icon_size = proto.icon_size or 64
@@ -206,97 +271,24 @@ for _, target_name in ipairs(shared.TARGETS) do
     local h = math.floor(y2 - y1 + 0.5)
     if w <= 0 then w = 1 end
     if h <= 0 then h = 1 end
-    local plan_name = "mb-plan-" .. target_name
 
-    -- Точный collision_box под размер здания, чтобы шаг протягивания (drag) совпадал с размером здания
-    cbox = {{-w/2 + 0.15, -h/2 + 0.15}, {w/2 - 0.15, h/2 - 0.15}}
-
-    local function make_layers(sw, sh)
-      local layers = {}
-
-      -- 1) Угловые рамки выделения из нативной текстуры курсора/выделения игры
-      -- Текстура углов выделения __core__/graphics/cursor-boxes-32x32.png или cursor-boxes.png
-      local corner_scale = 1.0
-      local x_off = (sw / 2) - 0.25
-      local y_off = (sh / 2) - 0.25
-
-      -- 4 нативных угловых маркера выделения чертежа
-      table.insert(layers, {
-        filename = "__core__/graphics/cursor-boxes-32x32.png",
-        x = 0, y = 0, width = 32, height = 32,
-        shift = {-x_off, -y_off},
-        scale = corner_scale,
-        tint = {r = 0.2, g = 0.85, b = 1.0, a = 0.9},
-        render_layer = "air-object",
-      })
-      table.insert(layers, {
-        filename = "__core__/graphics/cursor-boxes-32x32.png",
-        x = 32, y = 0, width = 32, height = 32,
-        shift = {x_off, -y_off},
-        scale = corner_scale,
-        tint = {r = 0.2, g = 0.85, b = 1.0, a = 0.9},
-        render_layer = "air-object",
-      })
-      table.insert(layers, {
-        filename = "__core__/graphics/cursor-boxes-32x32.png",
-        x = 0, y = 32, width = 32, height = 32,
-        shift = {-x_off, y_off},
-        scale = corner_scale,
-        tint = {r = 0.2, g = 0.85, b = 1.0, a = 0.9},
-        render_layer = "air-object",
-      })
-      table.insert(layers, {
-        filename = "__core__/graphics/cursor-boxes-32x32.png",
-        x = 32, y = 32, width = 32, height = 32,
-        shift = {x_off, y_off},
-        scale = corner_scale,
-        tint = {r = 0.2, g = 0.85, b = 1.0, a = 0.9},
-        render_layer = "air-object",
-      })
-
-      -- 2) Иконка целевого здания в центре
-      if icons then
-        for _, ic in ipairs(icons) do
-          table.insert(layers, {
-            filename = ic.icon,
-            size = ic.icon_size or icon_size,
-            scale = (0.5 + math.min(sw, sh) * 0.22) * (ic.scale or 1),
-            tint = ic.tint or {r = 1, g = 1, b = 1, a = 0.88},
-            shift = ic.shift or {0, 0},
-            render_layer = "air-object",
-          })
-        end
-      elseif icon then
-        table.insert(layers, {
-          filename = icon,
-          size = icon_size,
-          scale = 0.5 + math.min(sw, sh) * 0.22,
-          tint = {r = 1, g = 1, b = 1, a = 0.88},
-          render_layer = "air-object",
-        })
-      else
-        table.insert(layers, {
-          filename = "__base__/graphics/icons/steel-chest.png",
-          size = 64,
-          scale = 1.0,
-          tint = {r = 1, g = 1, b = 1, a = 0.88},
-          render_layer = "air-object",
-        })
-      end
-      return layers
+    -- Для переработчика (recycler) в Space Age:
+    -- переработчик имеет несимметричный размер 4x2
+    if target_name == "recycler" then
+      w, h = 4, 2
     end
 
-    local sprite_layers = make_layers(w, h)
-    local sprite_4way = {
-      north = { layers = sprite_layers },
-      east = { layers = sprite_layers },
-      south = { layers = sprite_layers },
-      west = { layers = sprite_layers },
-    }
+    local plan_name = "mb-plan-" .. target_name
+    local plan_sbox = {{-w/2, -h/2}, {w/2, h/2}}
+    local plan_cbox = {{-w/2 + 0.15, -h/2 + 0.15}, {w/2 - 0.15, h/2 - 0.15}}
+    local plan_layers = make_plan_layers(w, h, icons, icon, icon_size)
 
     local plan_entity = {
       type = "assembling-machine",
       name = plan_name,
+      selection_priority = 60,
+      always_draw_idle_animation = true,
+      create_ghost_on_death = false,
       localised_name = {"", {"entity-name." .. target_name}, " [", {"multibuild.pending"}, "]"},
       icon = icon,
       icons = icons,
@@ -307,26 +299,30 @@ for _, target_name in ipairs(shared.TARGETS) do
       subgroup = "multibuild-frames",
       order = "z-plan-" .. target_name,
       max_health = 100,
-      selection_box = sbox,
-      collision_box = cbox,
+      selection_box = plan_sbox,
+      collision_box = plan_cbox,
       collision_mask = {layers = {}},
-            crafting_categories = {"multibuild-dummy"},
+      crafting_categories = {"multibuild-dummy"},
       crafting_speed = 1,
       energy_source = {type = "void"},
       energy_usage = "1W",
-      render_layer = "air-object",
+      render_layer = "cursor",
       graphics_set = {
-        idle_animation = sprite_4way,
+        idle_animation = {
+          north = { layers = plan_layers },
+          east  = { layers = plan_layers },
+          south = { layers = plan_layers },
+          west  = { layers = plan_layers },
+        },
         always_draw_idle_animation = true,
-        animation = sprite_4way,
         working_visualisations = {
           {
             always_draw = true,
-            render_layer = "air-object",
-            north_animation = sprite_4way.north,
-            east_animation = sprite_4way.east,
-            south_animation = sprite_4way.south,
-            west_animation = sprite_4way.west,
+            render_layer = "cursor",
+            north_animation = { layers = plan_layers },
+            east_animation  = { layers = plan_layers },
+            south_animation = { layers = plan_layers },
+            west_animation  = { layers = plan_layers },
           }
         }
       },
@@ -354,16 +350,11 @@ for _, target_name in ipairs(shared.TARGETS) do
     table.insert(plan_entities, plan_entity)
     table.insert(plan_items, plan_item)
 
-    -- Разрешаем копирование настроек между целевым зданием и планом
     proto.additional_pastable_entities = proto.additional_pastable_entities or {}
-    table.insert(proto.additional_pastable_entities, FRAME)
     table.insert(proto.additional_pastable_entities, plan_name)
-
-    table.insert(frame.additional_pastable_entities, target_name)
     table.insert(frame.additional_pastable_entities, plan_name)
   end
 end
-
 data:extend(plan_entities)
 data:extend(plan_items)
 

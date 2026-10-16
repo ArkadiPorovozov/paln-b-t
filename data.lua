@@ -7,6 +7,7 @@
 
 
 require("prototype.entity.entity")
+require("prototype.entity.entity-a")
 require("prototype.entity.rock")
 --require("prototype.entity.planet-logistics")
 require("prototype.item.item")

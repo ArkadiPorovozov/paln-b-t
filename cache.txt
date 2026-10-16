@@ -1737,3 +1737,24 @@ curl https://api.orcarouter.ai/v1/chat/completions \
 
 
   sk-orca-BdslthVkxOSEkl59EqbbWAYzvjMdOxvFhTaTtc2Wbxk
+
+
+
+
+
+
+  Не удалось загрузить следующие моды: The given sprite rectangle (left_top=0x368, right_bottom=190x184) is outside the actual sprite size (left_top=0x0, right_bottom=1200x496).
+
+See the log file for more information.: **space-age**/graphics/entity/capture-robot-rocket/capture-robot-capture-anim-mask.png
+
+размеры 
+
+```
+return
+{
+  width = 190,
+  height = 184,
+  shift = util.by_pixel( 0.0, -66.5),
+  line_length = 8,
+}
+```

@@ -33,9 +33,8 @@ local TARGETS = {
   "electromagnetic-plant",
   "foundry",
   "cryogenic-plant",
-  "recycler",
-  "big-mining-drill",
   "agricultural-tower",
+  "substation",
 }
 
 return {

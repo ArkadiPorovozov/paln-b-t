@@ -1467,78 +1467,7 @@ if defines.events.on_player_pipette then
   end)
 end
 
--- ===== РОТАЦИЯ СУЩНОСТИ ПЛАНА (КЛАВИША R В МИРЕ) =====
-if defines.events.on_player_rotated_entity then
-  script.on_event(defines.events.on_player_rotated_entity, function(event)
-    local e = event.entity
-    if not (e and e.valid) then return end
-    if string.sub(e.name, 1, 8) ~= "mb-plan-" then return end
-
-    local target_name = string.sub(e.name, 9)
-    if string.sub(target_name, -4) == "-rot" then
-      target_name = string.sub(target_name, 1, -5)
-    end
-
-    local s = target_sizes()[target_name]
-    if not s or s.w == s.h then return end
-
-    for i, p in ipairs(storage.pendings or {}) do
-      if p.plan_entity == e or (p.surface == e.surface and rects_overlap(p.rect, {
-        minx = math.floor(e.position.x - 2),
-        miny = math.floor(e.position.y - 2),
-        w = 4, h = 4,
-      })) then
-        local new_dir = e.direction or defines.direction.north
-        local is_rot = is_east_west(new_dir)
-        local new_w = is_rot and s.h or s.w
-        local new_h = is_rot and s.w or s.h
-        local cx = e.position.x
-        local cy = e.position.y
-        local new_minx = math.floor(cx - new_w / 2 + 0.001)
-        local new_miny = math.floor(cy - new_h / 2 + 0.001)
-
-
-        clear_pending_requests(p.surface, p.rect)
-        for x = p.rect.minx, p.rect.minx + p.rect.w - 1 do
-          for y = p.rect.miny, p.rect.miny + p.rect.h - 1 do
-            local ghosts = p.surface.find_entities_filtered{name = "entity-ghost", position = {x + 0.5, y + 0.5}}
-            for _, g in ipairs(ghosts) do
-              if g.ghost_name == FRAME then g.destroy() end
-            end
-          end
-        end
-
-        if p.render_obj and p.render_obj.valid then
-          p.render_obj.destroy()
-          p.render_obj = nil
-        end
-
-        p.rect = {minx = new_minx, miny = new_miny, w = new_w, h = new_h}
-        p.direction = new_dir
-        p.plan_entity = e
-
-        for x = new_minx, new_minx + new_w - 1 do
-          for y = new_miny, new_miny + new_h - 1 do
-            local pos = {x + 0.5, y + 0.5}
-            local existing = p.surface.find_entity(FRAME, pos)
-            local ghost = p.surface.find_entity("entity-ghost", pos)
-            if not existing and not ghost then
-              p.surface.create_entity{
-                name = "entity-ghost",
-                inner_name = FRAME,
-                position = pos,
-                force = p.force,
-              }
-            end
-          end
-        end
-
-        update_pending_requests(p.surface, p.rect, p.target)
-        break
-      end
-    end
-  end)
-end
+-- Ротация планов и выходов отключена: все постройки симметричны
 
 -- ===== ДЕМОНТАЖ СУЩНОСТИ ПЛАНА (ПРАВЫЙ КЛИК / Alt+D) =====
 local function on_plan_entity_removed(event)
@@ -1683,6 +1612,27 @@ local function on_tick()
     end
   end
 
+  -- Обрабатываем недавние размещения чертежей зданий из каталога
+  if storage.recent_blueprint_placements then
+    for p_idx, rec in pairs(storage.recent_blueprint_placements) do
+      if rec and rec.tick == game.tick then
+        local target = rec.target
+        local s = target_sizes()[target]
+        if s and rec.surface and rec.surface.valid then
+          local bw = rec.maxx - rec.minx + 1
+          local bh = rec.maxy - rec.miny + 1
+          local player = game.get_player(p_idx)
+          local dir = defines.direction.north
+          if s.w ~= s.h and bw == s.h and bh == s.w then
+            dir = defines.direction.east
+          end
+          add_pending(rec.surface, {minx = rec.minx, miny = rec.miny, w = bw, h = bh}, target, rec.force, player, nil, dir)
+        end
+        storage.recent_blueprint_placements[p_idx] = nil
+      end
+    end
+  end
+
   if game.tick % POLL_TICKS == 0 then
     poll_pendings()
   end
@@ -1804,11 +1754,59 @@ local function on_entity_placed(event)
       local is_rot = is_east_west(dir)
       local fw = is_rot and s.h or s.w
       local fh = is_rot and s.w or s.h
-      local minx = math.floor(e.position.x - fw / 2 + 0.001)
-      local miny = math.floor(e.position.y - fh / 2 + 0.001)
-      add_pending(e.surface, {minx = minx, miny = miny, w = fw, h = fh}, target_name, e.force, event.player_index and game.get_player(event.player_index), nil, dir)
+      local cx, cy = e.position.x, e.position.y
+      local minx = math.floor(cx - fw / 2 + 0.001)
+      local miny = math.floor(cy - fh / 2 + 0.001)
+      local surface = e.surface
+      local force = e.force
+      local player = event.player_index and game.get_player(event.player_index)
+
+-- Ставим чистый план здания
+
+      add_pending(surface, {minx = minx, miny = miny, w = fw, h = fh}, target_name, force, player, nil, dir)
     end
     return
+  end
+
+  -- Если игрок ставит каркасы или призраки каркасов из чертежа каталога:
+  local is_frame_ghost = (e.name == "entity-ghost" and e.ghost_name == FRAME)
+  local is_real_frame = (e.name == FRAME)
+
+  if (is_frame_ghost or is_real_frame) and event.player_index then
+    local p_target = storage.selected_blueprint_target and storage.selected_blueprint_target[event.player_index]
+    if p_target then
+      local s = target_sizes()[p_target]
+      if s then
+        local player = game.get_player(event.player_index)
+        local cs = player and player.cursor_stack
+        -- Проверяем, держит ли игрок чертёж с меткой этого здания
+        if cs and cs.valid_for_read and cs.name == "blueprint" and cs.label == p_target then
+          storage.recent_blueprint_placements = storage.recent_blueprint_placements or {}
+          local rec = storage.recent_blueprint_placements[event.player_index]
+          local now = game.tick
+          if not rec or rec.tick ~= now or rec.target ~= p_target then
+            rec = {
+              tick = now,
+              target = p_target,
+              surface = e.surface,
+              force = e.force,
+              minx = math.floor(e.position.x),
+              maxx = math.floor(e.position.x),
+              miny = math.floor(e.position.y),
+              maxy = math.floor(e.position.y),
+            }
+            storage.recent_blueprint_placements[event.player_index] = rec
+          else
+            local fx = math.floor(e.position.x)
+            local fy = math.floor(e.position.y)
+            if fx < rec.minx then rec.minx = fx end
+            if fx > rec.maxx then rec.maxx = fx end
+            if fy < rec.miny then rec.miny = fy end
+            if fy > rec.maxy then rec.maxy = fy end
+          end
+        end
+      end
+    end
   end
 
   if e.name == FRAME then
@@ -1823,8 +1821,61 @@ if defines.events.on_space_platform_built_entity then
   script.on_event(defines.events.on_space_platform_built_entity, on_entity_placed)
 end
 
+local function cleanup_temp_blueprints(player)
+  if not (player and player.valid) then return end
+  local pinv = player.get_main_inventory()
+  if not pinv then return end
+  -- Удаляем временные чертежи MultiBuild из инвентаря игрока, чтобы не засорять инвентарь
+  for i = 1, #pinv do
+    local stack = pinv[i]
+    if stack and stack.valid_for_read and stack.name == "blueprint" then
+      if stack.label and (target_sizes()[stack.label] or string.sub(stack.label, 1, 3) == "mb-") then
+        stack.clear()
+      end
+    end
+  end
+end
+
+local function give_selector_to_player(player)
+  if not (player and player.valid) then return end
+  cleanup_temp_blueprints(player)
+  local cs = player.cursor_stack
+  if cs then
+    player.clear_cursor()
+    local pinv = player.get_main_inventory()
+    local found_item = pinv and pinv.find_item_stack(SELECTOR)
+    if found_item and found_item.valid_for_read then
+      player.cursor_stack.transfer_stack(found_item)
+    else
+      player.cursor_stack.set_stack({name = SELECTOR, count = 1})
+    end
+  end
+end
+
 -- ===== GUI EVENTS =====
 script.on_event(defines.events.on_gui_opened, function(event)
+  local player = game.get_player(event.player_index)
+  if not player then return end
+
+  -- Перехватываем ПКМ ТОЛЬКО по нашему инструменту выделения SELECTOR (mb-area-selector).
+  -- Ни в коем случае НЕ перехватываем обычные чертежи, копирование (Ctrl+C, copy-paste-tool), срезку и т.д.!
+  local is_our_selector = false
+  if event.item and event.item.valid_for_read and event.item.name == SELECTOR then
+    is_our_selector = true
+  elseif event.gui_type == defines.gui_type.item then
+    local cs = player.cursor_stack
+    if cs and cs.valid_for_read and cs.name == SELECTOR then
+      is_our_selector = true
+    end
+  end
+
+  if is_our_selector then
+    player.opened = nil
+    give_selector_to_player(player)
+    open_plan_catalog_menu(player, {x = math.floor(player.position.x), y = math.floor(player.position.y)})
+    return
+  end
+
   local entity = event.entity
   if not (entity and entity.valid) then return end
   local player = game.get_player(event.player_index)
@@ -1835,18 +1886,8 @@ script.on_event(defines.events.on_gui_opened, function(event)
     player.opened = nil
 
     -- Кладём инструмент выделения прямо в курсор игрока
-    local cs = player.cursor_stack
-    if cs and (not cs.valid_for_read or cs.name ~= SELECTOR) then
-      local pinv = player.get_main_inventory()
-      local found_item = pinv and pinv.find_item_stack(SELECTOR)
-      if found_item and found_item.valid_for_read then
-        player.clear_cursor()
-        player.cursor_stack.transfer_stack(found_item)
-      else
-        player.clear_cursor()
-        player.cursor_stack.set_stack({name = SELECTOR, count = 1})
-      end
-    end
+    give_selector_to_player(player)
+    return
   end
 end)
 
@@ -1886,8 +1927,9 @@ script.on_event(defines.events.on_gui_click, function(event)
     local s = target_sizes()[target]
     if not s then return end
 
-    -- Создаем настоящий чертёж с ПРИКРЕПЛЁННЫМИ КАРКАСАМИ-СУНДУКАМИ
-    -- Игра протягивает чертёж нативно, размещая план и все сундуки одновременно без шлейфа и пропусков!
+    -- Создаем чертёж, содержащий:
+    -- 1) Сущность плана mb-plan- в центре (показывает иконку, угловую область и стрелки входов/выходов)
+    -- 2) Каркасы под всеми тайлами здания
     player.clear_cursor()
     local cs = player.cursor_stack
     if cs then
@@ -1895,32 +1937,32 @@ script.on_event(defines.events.on_gui_click, function(event)
       local bp_entities = {}
       local ent_num = 1
 
-      -- 1) Сущность плана в центре чертежа
-      bp_entities[#bp_entities + 1] = {
-        entity_number = ent_num,
-        name = "mb-plan-" .. target,
-        position = {0, 0},
-      }
-      ent_num = ent_num + 1
+      -- В чертёж помещается ТОЛЬКО сущность плана mb-plan-<target> ровно в координатах {0, 0}!
+      -- Никаких каркасов 1х1 внутри чертежа нет:
+      -- 1) Это гарантирует 100% идеальное центрирование строго в ноль под курсором (без смещений!).
+      -- 2) При протягивании мыши чертёж никогда не разорвётся на отдельные блоки 1х1.
+      -- 3) Каркасы под всей областью автоматически спавнятся скриптом в момент установки плана!
+      -- СМЕЩЕНИЕ ЗДАНИЯ ВНУТРИ ЧЕРТЕЖА:
+      -- Если чертёж смещён относительно сетки, регулируйте координаты OFFSET_X и OFFSET_Y здесь:
+      local OFFSET_X = s.w / 2
+      local OFFSET_Y = s.h / 2
 
-      -- 2) Прикреплённые каркасы под всеми клетками чертежа
-      local half_w = s.w / 2
-      local half_h = s.h / 2
-      for x = 0, s.w - 1 do
-        for y = 0, s.h - 1 do
-          local rel_x = x - half_w + 0.5
-          local rel_y = y - half_h + 0.5
-          bp_entities[#bp_entities + 1] = {
-            entity_number = ent_num,
-            name = FRAME,
-            position = {rel_x, rel_y},
-          }
-          ent_num = ent_num + 1
-        end
-      end
+      bp_entities[1] = {
+        entity_number = 1,
+        name = "mb-plan-" .. target,
+        position = {OFFSET_X, OFFSET_Y},
+        direction = defines.direction.north,
+      }
 
       cs.set_blueprint_entities(bp_entities)
       cs.label = target
+
+      cs.blueprint_snap_to_grid = {s.w, s.h}
+      cs.blueprint_absolute_snapping = true
+      cs.blueprint_position_relative_to_grid = {0, 0}
+
+      storage.selected_blueprint_target = storage.selected_blueprint_target or {}
+      storage.selected_blueprint_target[player.index] = target
     end
     return
   end
@@ -2149,14 +2191,37 @@ script.on_event(defines.events.on_player_selected_area, function(event)
   open_custom_frame_menu(player, target_frame, rect)
 end)
 
--- ПКМ (Alt-действие): Открытие меню выбора чертежа здания
+-- Обработка ПКМ (клик или протяжка с инструментом выделения / чертежом в руках)
+local function handle_selector_right_click(player, target_tile)
+  if not (player and player.valid) then return end
+
+  local cs = player.cursor_stack
+  local cg = player.cursor_ghost
+
+  local has_selector = (cs and cs.valid_for_read and cs.name == SELECTOR)
+  local has_blueprint = (cs and cs.valid_for_read and cs.name == "blueprint")
+  local has_plan_ghost = (cg and string.sub(cg.name, 1, 8) == "mb-plan-")
+
+  if has_selector or has_blueprint or has_plan_ghost then
+    -- Возвращаем инструмент выделения в руку вместо чертежа!
+    give_selector_to_player(player)
+
+    -- Открываем меню каталога чертежей
+    local tile_pos = target_tile or {x = math.floor(player.position.x), y = math.floor(player.position.y)}
+    open_plan_catalog_menu(player, tile_pos)
+  end
+end
+
+
+
+-- 2) ПКМ-выделение области инструментом (alt_selected_area)
 script.on_event(defines.events.on_player_alt_selected_area, function(event)
   if event.item ~= SELECTOR then return end
   local player = game.get_player(event.player_index)
   if not player then return end
 
   local rect = rect_from_area(event.area)
-  open_plan_catalog_menu(player, {x = rect.minx, y = rect.miny})
+  handle_selector_right_click(player, {x = rect.minx, y = rect.miny})
 end)
 
 -- ===== storage & commands =====
@@ -2212,4 +2277,47 @@ script.on_configuration_changed(function()
       p.render_obj = nil
     end
   end
+end)
+
+
+-- on_player_setup_blueprint не должен вмешиваться в стандартный Ctrl+C копирования!
+-- Меню каталога открывается только через наш инструмент mb-area-selector или дабл-клик.
+
+
+script.on_event(defines.events.on_player_cursor_stack_changed, function(event)
+  local player = game.get_player(event.player_index)
+  if not player then return end
+
+  local cs = player.cursor_stack
+  local cg = player.cursor_ghost
+
+  storage.had_plan_cursor = storage.had_plan_cursor or {}
+
+  local is_holding_plan = false
+  if cs and cs.valid_for_read and cs.name then
+    local name = cs.name
+    if type(name) == "string" and string.sub(name, 1, 8) == "mb-plan-" then
+      is_holding_plan = true
+    elseif name == "blueprint" and cs.label and (target_sizes()[cs.label] or string.sub(cs.label, 1, 3) == "mb-") then
+      is_holding_plan = true
+    end
+  end
+
+  if not is_holding_plan and cg then
+    local cg_name = (type(cg) == "string" and cg) or (type(cg) == "table" and cg.name) or (type(cg) == "userdata" and cg.name)
+    if type(cg_name) == "string" and string.sub(cg_name, 1, 8) == "mb-plan-" then
+      is_holding_plan = true
+    end
+  end
+
+  -- 1) Если игрок только что держал план/чертёж здания и сбросил его (нажал ПКМ или Q в мир):
+  if storage.had_plan_cursor[player.index] and not is_holding_plan then
+    storage.had_plan_cursor[player.index] = nil
+    give_selector_to_player(player)
+    open_plan_catalog_menu(player, {x = math.floor(player.position.x), y = math.floor(player.position.y)})
+    return
+  end
+
+  -- 2) Отслеживаем состояние курсора
+  storage.had_plan_cursor[player.index] = is_holding_plan or nil
 end)

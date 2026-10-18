@@ -327,25 +327,28 @@ ssc_turbine.selection_box = {{-1.8, -1.8}, {1.8, 1.8}}
 ssc_turbine.damaged_trigger_effect = hit_effects.entity()
 ssc_turbine.max_power_output = "5MW"
 ssc_turbine.energy_source = { type = "electric", usage_priority = "secondary-output" }
+-- 2.1: minimum_temperature/maximum_temperature убраны из FluidBox.
+-- Температурные лимиты генератора задаются на уровне прототипа:
+-- minimum_input_temperature / maximum_input_temperature (см. ниже).
+ssc_turbine.minimum_input_temperature = 100.0
 ssc_turbine.fluid_box = {
   volume = 200,
-  pipe_covers =  pipe_connectors,
+  pipe_covers = pipecoverspictures(),
   pipe_connections = {
-        { direction = defines.direction.east,  position =  { 1.5, -1.5 },},
-        { direction = defines.direction.west,  position =  { -1.5, 1.5 },},
-        { direction = defines.direction.west,  position =  { -1.5, -1.5},},
-        { direction = defines.direction.east,  position =  {  1.5, 1.5 },},
+        { flow_direction = "input", direction = defines.direction.east,  position =  { 1.5, -1.5 },},
+        { flow_direction = "input", direction = defines.direction.west,  position =  { -1.5, 1.5 },},
+        { flow_direction = "input", direction = defines.direction.west,  position =  { -1.5, -1.5},},
+        { flow_direction = "input", direction = defines.direction.east,  position =  {  1.5, 1.5 },},
       },
   production_type = "input",
-  filter = "steam",
-  minimum_temperature = 100.0
+  filter = "steam"
 }
 ssc_turbine.two_direction_only = true
 ssc_turbine.smoke =
     {
       {
         name = "turbine-smoke",
-        north_position = {0.5, -1.0},
+        north_position = {0.5, -0.8},
         east_position  = {0.5, -1.0},
         frequency = 10 / 32,
         starting_vertical_speed = 0.08,
@@ -409,7 +412,6 @@ ssc_turbine.pictures = {
   east  = {animation = turbine_animation},
 }
 ssc_turbine.perceived_performance = {minimum = 0.25, performance_to_activity_rate = 2.0}
-
 data:extend({ssc_turbine})
 
 

@@ -6,5 +6,5 @@
     "description": "qq", 
     "contact": "https://discord.gg/hsfpf8VwYS",
     "factorio_version": "2.1",
-    "dependencies": ["base >= 2.0.28", "space-age", "cr-commons"]
+    "dependencies": ["base >= 2.0.28", "space-age", "cr-commons", "0-things >= 0.6.0"]
 }

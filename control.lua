@@ -98,6 +98,7 @@ end)
 
 --require("script.planet-logistics")
 require("script.carkas")
+require("script.ssc-turbine")
 --require("control-alert-sys")
 
 

@@ -306,8 +306,8 @@ data:extend({spase_asm2})
 --assembling-machine-45-corp
 local asm45_corp_it = table.deepcopy(data.raw["item"]["assembling-machine-3"])
 asm45_corp_it.name = "assembling-machine-45-corp"
-asm45_corp_it.icon = q .. "/graphics/entity/assembling-machine-corp-icon.png"
-asm45_corp_it.icon_size = 64
+asm45_corp_it.icon = q .. "/graphics/entity/asm45_corp/asm45_corp.png"
+asm45_corp_it.icon_size = 300
 asm45_corp_it.place_result = asm45_corp_it.name
 asm45_corp_it.subgroup = "space-platform"
 data:extend({asm45_corp_it})
@@ -325,7 +325,7 @@ asm45_corp.graphics_set = {
     animation = {
       layers = {
         {
-          filename = q .. "/graphics/entity/assembling-machine-31-anim.png",
+          filename = q .. "/graphics/entity/asm45_corp/asm45_corp-anim.png",
           width = 140,
           height = 160,
           frame_count = 64,
@@ -336,7 +336,7 @@ asm45_corp.graphics_set = {
           shift = util.by_pixel_hr(28, -50)
         },
         {
-          filename = q .. "/graphics/entity/assembling-machine-shadow.png",
+          filename = q .. "/graphics/entity/asm45_corp/asm45_corp-shadow.png",
           width = 300,
           height = 300,
           frame_count = 1,
@@ -346,7 +346,7 @@ asm45_corp.graphics_set = {
           draw_as_shadow = true
         },
         {
-          filename = q .. "/graphics/entity/assembling-machine-base.png",
+          filename = q .. "/graphics/entity/asm45_corp/asm45_corp-base.png",
           width = 300,
           height = 300,
           frame_count = 1,
@@ -361,7 +361,8 @@ data:extend({asm45_corp})
 
 local ssc_turbine_it = table.deepcopy(data.raw["item"]["steam-turbine"])
 ssc_turbine_it.name = "ssc-turbine"
-ssc_turbine_it.icon = q .. "/graphics/entity/sa1-gen-1231-icon.png"
+ssc_turbine_it.icon = q .. "/graphics/entity/ssc_turbine/ssc_turbine.png"
+ssc_turbine_it.icon_size = 349
 ssc_turbine_it.place_result = ssc_turbine_it.name
 ssc_turbine_it.subgroup = "space-platform"
 data:extend({ssc_turbine_it})
@@ -408,7 +409,7 @@ ssc_turbine.working_sound = {
 local turbine_animation = {
     layers = {
         {
-          filename = q .. "/graphics/entity/sa1-gen-1231.png",
+          filename = q .. "/graphics/entity/ssc_turbine/ssc_turbine.png",
           width = 349,
           height = 353,
           frame_count = 1,
@@ -418,7 +419,7 @@ local turbine_animation = {
           scale = 0.5
         },
         {
-          filename = q .. "/graphics/entity/sa-gen123-s.png",
+          filename = q .. "/graphics/entity/ssc_turbine/ssc_turbine-shadow.png",
           width = 298,
           height = 303,
           frame_count = 1,

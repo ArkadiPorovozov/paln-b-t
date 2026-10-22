@@ -129,8 +129,11 @@ data:extend({{
   hidden_in_factoriopedia = true,
   selectable_in_game = false,
   collision_mask = { layers = {} },
-  collision_box = {{-0.4, -0.4}, {0.4, 0.4}},
-  selection_box = {{-0.5, -0.5}, {0.5, 0.5}},
+  -- Провода подключаются к границе сущности, поэтому генератор — размером с саму
+  -- турбину: иначе провода уходили бы в её центр. Коллизии у него нет (маска
+  -- пустая), так что на постройку и проход это не влияет.
+  collision_box = {{-2.3, -2.3}, {2.3, 2.3}},
+  selection_box = {{-2.5, -2.5}, {2.5, 2.5}},
   max_health = 1,
   energy_source = {
     type = "electric",

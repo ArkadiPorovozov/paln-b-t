@@ -99,6 +99,8 @@ end)
 --require("script.planet-logistics")
 require("script.carkas")
 require("script.ssc-turbine")
+require("script.asm45-corp-site")
+require("script.clouds")
 --require("control-alert-sys")
 
 

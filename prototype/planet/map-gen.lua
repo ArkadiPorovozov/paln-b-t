@@ -64,6 +64,8 @@ planet_map_gen.p1 = function()
         settings = {
           --["electrolyte-well"] = {},
           --["satellite-debris"] = {},
+          ["q1-ore"] = {},
+          ["q2-ore"] = {},
         }
       },
 --[[

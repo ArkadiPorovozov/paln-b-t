@@ -66,4 +66,87 @@ data:extend({
     expression = "(islands_mask > 0.95) * 30"
   },
 
+  -- Атмосферные руды q1/q2: у каждой своё поле, чтобы пятна не пересекались.
+  -- Пятно = "озеро": крупная кучная масса (низкочастотный шум) плюс
+  -- рваная береговая линия (мелкий шум) и искажение координат (domain warp).
+  {
+    type = "noise-expression",
+    name = "cloud_q1_field",
+    expression = [[
+      multioctave_noise{
+        x = x + 6 * basis_noise{x = x, y = y, seed0 = map_seed, seed1 = 1777, input_scale = 0.015},
+        y = y + 6 * basis_noise{x = x, y = y, seed0 = map_seed, seed1 = 2777, input_scale = 0.015},
+        seed0 = map_seed,
+        seed1 = 777,
+        octaves = 4,
+        persistence = 0.5,
+        input_scale = 0.05,
+        output_scale = 1
+      }
+      +
+      0.6 * multioctave_noise{
+        x = x,
+        y = y,
+        seed0 = map_seed,
+        seed1 = 5777,
+        octaves = 3,
+        persistence = 0.5,
+        input_scale = 0.16,
+        output_scale = 1
+      }
+    ]]
+  },
+
+  {
+    type = "noise-expression",
+    name = "cloud_q2_field",
+    expression = [[
+      multioctave_noise{
+        x = x + 6 * basis_noise{x = x, y = y, seed0 = map_seed, seed1 = 1778, input_scale = 0.015},
+        y = y + 6 * basis_noise{x = x, y = y, seed0 = map_seed, seed1 = 2778, input_scale = 0.015},
+        seed0 = map_seed,
+        seed1 = 778,
+        octaves = 4,
+        persistence = 0.5,
+        input_scale = 0.05,
+        output_scale = 1
+      }
+      +
+      0.6 * multioctave_noise{
+        x = x,
+        y = y,
+        seed0 = map_seed,
+        seed1 = 5778,
+        octaves = 3,
+        persistence = 0.5,
+        input_scale = 0.16,
+        output_scale = 1
+      }
+    ]]
+  },
+
+  {
+    type = "noise-expression",
+    name = "q1_ore_probability",
+    expression = "clamp((cloud_q1_field - 1.50) * 100, 0, 1)"
+  },
+
+  {
+    type = "noise-expression",
+    name = "q2_ore_probability",
+    expression = "clamp((cloud_q2_field - 1.55) * 100, 0, 1)"
+  },
+
+  {
+    type = "noise-expression",
+    name = "q1_ore_richness",
+    expression = "500"
+  },
+
+  {
+    type = "noise-expression",
+    name = "q2_ore_richness",
+    expression = "500"
+  },
+
 })

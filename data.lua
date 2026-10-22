@@ -16,6 +16,7 @@ require("prototype.tile")
 require("prototype.planet.map-gen")
 require("prototype.planet.planet")
 require("prototype.planet.noise-data")
+require("prototype.ore.q1-q2")
 --require("prototype.ore.ore-1")
 
 --require("data-a")

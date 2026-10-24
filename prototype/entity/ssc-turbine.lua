@@ -12,7 +12,7 @@ ssc_turbine_it.subgroup = "space-platform"
 data:extend({ssc_turbine_it})
 
 
--- ssc-turbine: работает на льду + твёрдом топливе и выдаёт 50MW.
+-- ssc-turbine: работает на льду + твёрдом топливе и выдаёт 6MW.
 -- Сама турбина — это assembling-machine с фиксированным рецептом
 -- (тратит 1 лёд + 1 твёрдое топливо в секунду), а электричество выдаёт
 -- скрытый "ssc-turbine-generator" (см. script/ssc-turbine.lua).
@@ -110,16 +110,16 @@ data:extend({
   },
 })
 
--- Скрытый генератор на 50MW.
+-- Скрытый генератор на 6MW.
 -- Это автоматический "ребёнок" турбины в терминах библиотеки 0-things:
 -- Things сам создаёт его вместе с турбиной (в т.ч. при постройке из чертежа)
 -- и уничтожает вместе с ней. Скрипт script/ssc-turbine.lua его не трогает:
--- он лишь включает генератор (50MW), пока турбина жжёт топливо, и выключает
+-- он лишь включает генератор (6MW), пока турбина жжёт топливо, и выключает
 -- (0), когда не жжёт.
 -- Флаг "not-blueprintable" обязателен: не-Thing дети в Things должны быть
 -- неблюпринтуемыми (иначе Things падает с ошибкой при загрузке данных).
--- Мощность задаётся полем energy_production (50MW); в рантайме то же значение
--- доступно как power_production и измеряется в Дж/тик (50e6/60).
+-- Мощность задаётся полем energy_production (6MW); в рантайме то же значение
+-- доступно как power_production и измеряется в Дж/тик (6e6/60).
 data:extend({{
   type = "electric-energy-interface",
   name = "ssc-turbine-generator",
@@ -138,8 +138,78 @@ data:extend({{
   energy_source = {
     type = "electric",
     usage_priority = "primary-output",
-    buffer_capacity = "50MJ",
+    -- Ровно один тик выработки на 6 МВт: больше не нужно, иначе GUI
+    -- показывает буфер как «максимальную выработку» (6 МДж/тик = 360 МВт).
+    buffer_capacity = "100kJ",
   },
-  energy_production = "50MW",
+  energy_production = "6MW",
   gui_mode = "none",
 }})
+
+-- Пар из трубы турбины.
+--
+-- Это точная копия ванильного "turbine-smoke" (тот же цвет, размер, время
+-- жизни и анимация), только под своим именем: у каждого прототипа дыма лимит
+-- 255 одновременно живущих экземпляров, и копия не отбирает бюджет у обычных
+-- паровых турбин.
+--
+-- Пускает пар не create_trivial_smoke (он не умеет вертикальную скорость), а
+-- скрытый particle-source: у него есть starting_vertical_speed, поэтому клубы
+-- поднимаются вверх ровно так же, как у ванильной паровой турбины.
+data:extend({
+  {
+    type = "trivial-smoke",
+    name = "ssc-turbine-steam",
+    duration = 600,
+    fade_in_duration = 30,
+    fade_away_duration = 570,
+    spread_duration = 600,
+    start_scale = 0.8,
+    end_scale = 1.0,
+    color = {r = 0.5, g = 0.5, b = 0.5, a = 0.3},
+    cyclic = true,
+    affected_by_wind = true,
+    render_layer = "smoke",
+    animation = {
+      filename = "__base__/graphics/entity/smoke/smoke.png",
+      priority = "high",
+      width = 152,
+      height = 120,
+      line_length = 5,
+      frame_count = 60,
+      shift = {-0.53125, -0.4375},
+      animation_speed = 0.25,
+      flags = {"smoke"},
+    },
+  },
+  {
+    -- Скрытый источник пара: сам не рисуется, но пока существует — пускает
+    -- клубы "ssc-turbine-steam" из своей позиции. Скрипт создаёт его, пока
+    -- турбина работает, и удаляет, когда она гаснет.
+    type = "particle-source",
+    name = "ssc-turbine-steam-source",
+    icon = "__core__/graphics/empty.png",
+    icon_size = 64,
+    flags = {"not-on-map"},
+    hidden = true,
+    hidden_in_factoriopedia = true,
+    selectable_in_game = false,
+    -- время в секундах; если источник всё же истечёт, скрипт создаст новый
+    time_to_live = 60 * 60 * 24,
+    time_before_start = 0,
+    height = 0,
+    vertical_speed = 0,
+    horizontal_speed = 0,
+    smoke = {
+      {
+        name = "ssc-turbine-steam",
+        position = {0, 0},
+        -- как у ванильной steam-turbine
+        frequency = 10 / 32,
+        starting_vertical_speed = 0.08,
+        starting_vertical_speed_deviation = 0,
+        starting_frame_deviation = 60,
+      },
+    },
+  },
+})

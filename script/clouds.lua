@@ -1,30 +1,37 @@
--- Облака над атмосферной рудой.
--- Ставим их скриптом после генерации чанка: если делать это через autoplace,
--- облака занимают тайлы раньше руды и руда под ними не появляется.
--- Облака статичны (не двигаются), просто проигрывают свою анимацию.
+-- Облака над ресурсами генерирует сама карта — autoplace в data-final-fixes.lua.
+-- Скрипт их НЕ создаёт и не двигает: облако ставится ровно на тайлы ресурса
+-- (та же probability_expression, что и у руды), поэтому совпадение с рудой
+-- достигается без runtime.
 --
--- Облако ставится на КАЖДЫЙ тайл руды: спрайт 2x2 тайла, соседние облака
--- перекрываются, поэтому пятно руды закрыто без дырок.
---
--- Прозрачность при "скрыть высокие объекты" делает сам движок:
--- у прототипа облака стоит tall = true.
+-- Здесь остаётся только разовая чистка старых сейвов: раньше «атмосферные»
+-- облака (q-cloud-black) ставил скрипт, и в сохранённых играх они могли
+-- остаться. Новые облака (resource-cloud-*) скрипт не трогает — иначе они бы
+-- съехали с руды.
 
-local cloud_for_ore = {
-  ["q1-ore"] = "q1-cloud-white",
-  ["q2-ore"] = "q2-cloud-orange",
-}
+-- Атмосферные облака q-cloud-black скрипт больше не создаёт. Прототип оставлен
+-- только чтобы старые сейвы с уже созданными облаками загружались; тут же один
+-- раз убираем всё, что успело появиться в сейве.
+local function remove_random_clouds()
+  -- отдельный флаг: старый ssc_random_clouds_removed мог остаться в сейве
+  if storage.ssc_random_clouds_removed2 then
+    return
+  end
+  storage.ssc_random_clouds_removed2 = true
+  -- служебные поля старой версии с генерацией
+  storage.ssc_atmospheric_padded = nil
+  storage.ssc_padded_chunks = nil
 
-script.on_event(defines.events.on_chunk_generated, function(event)
-  local surface = event.surface
-  local area = event.area
-
-  for ore_name, cloud_name in pairs(cloud_for_ore) do
-    for _, ore in pairs(surface.find_entities_filtered{area = area, name = ore_name}) do
-      surface.create_entity{
-        name = cloud_name,
-        position = ore.position,
-        force = "neutral",
-      }
+  for _, surface in pairs(game.surfaces) do
+    for _, cloud in pairs(surface.find_entities_filtered{name = "q-cloud-black"}) do
+      if cloud.valid then
+        cloud.destroy()
+      end
     end
   end
-end)
+end
+
+script.on_init(remove_random_clouds)
+script.on_configuration_changed(remove_random_clouds)
+-- При обычной загрузке сейва on_configuration_changed не срабатывает, поэтому
+-- один раз проверяем на 50-м тике (15/30/60 заняты другими скриптами мода).
+script.on_nth_tick(50, remove_random_clouds)

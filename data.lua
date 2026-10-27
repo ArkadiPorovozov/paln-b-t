@@ -12,6 +12,7 @@ require("prototype.entity.rock")
 --require("prototype.entity.planet-logistics")
 require("prototype.item.item")
 require("prototype.tile")
+require("prototype.item.sun-platform-foundation")
 
 require("prototype.planet.map-gen")
 require("prototype.planet.planet")

@@ -18,7 +18,7 @@ end
 
 require("prototype.entity.assembling-machine-45-corp")
 require("prototype.entity.asm45-corp-site")
-require("prototype.entity.ssc-turbine")
+require("prototype.entity.ssc-turbine")   -- v3: котёл + нативный генератор; старое — prototype/entity/ssc-turbine-old.lua (не подключается)
 require("prototype.entity.atmo-cond")
 require("prototype.entity.clouds")
 require("prototype.entity.sheathing")

@@ -26,7 +26,7 @@ local cloud_scale = 1
 local cloud_alpha = 0.005
 -- цветовой множитель: чем меньше, тем темнее облака.
 -- 1 = цвет текстуры как есть; 0.62 — старый приглушённо-тёмный вид.
-local cloud_tint = {r = 0.12, g = 0.12, b = 0.12}
+local cloud_tint = {r = 0.022, g = 0.022, b = 0.022}
 -- плотность тени (обычный тёмный слой, а не draw_as_shadow)
 local shadow_alpha = 0.15
 -- насколько тень отодвинута от облака: чем дальше, тем выше висит облако
@@ -36,7 +36,8 @@ local heights = {
   orange = {cloud = -2, shadow = 4},
 }
 
-local function animations(folder, height, alpha, tint, shadow_alpha, shadow_x)
+local function animations(folder, height, alpha, tint, shadow_alpha, shadow_x, scale)
+  scale = scale or cloud_scale
   local anims = {}
   for i = 1, 10 do
     local file = q .. "/graphics/clouds/" .. folder .. "/cloud_" .. folder .. "_"
@@ -52,7 +53,7 @@ local function animations(folder, height, alpha, tint, shadow_alpha, shadow_x)
         line_length = 8,
         lines_per_file = 8,
         -- cloud_scale 0.6: кадр 128 px -> ~77 px -> ~2.4 тайла
-        scale = cloud_scale,
+        scale = scale,
         -- 64 кадра по 0.4 = ~2.7 секунды на цикл
         animation_speed = 0.4,
         -- тень смещена вниз-вправо: облако висит высоко
@@ -73,7 +74,7 @@ local function animations(folder, height, alpha, tint, shadow_alpha, shadow_x)
       frame_count = 64,
       line_length = 8,
       lines_per_file = 8,
-      scale = cloud_scale,
+      scale = scale,
       animation_speed = 0.4,
       shift = {0, height.cloud},
       mipmaps = 4,
@@ -128,7 +129,8 @@ local function cloud(name, folder, order, opts)
       opts.alpha or cloud_alpha,
       opts.tint or cloud_tint,
       opts.shadow_alpha or shadow_alpha,
-      opts.shadow_x
+      opts.shadow_x,
+      opts.scale or cloud_scale
     ),
   }
 end
@@ -151,5 +153,21 @@ data:extend({
     alpha = 0.5,
     tint = {r = 0.03, g = 0.03, b = 0.03},
     shadow_alpha = 0.25,
+  }),
+
+  -- Тёмный дым над лавой. Прототип-заготовка: autoplace ему выдаёт
+  -- data-final-fixes.lua (и только на планетах с нашей лавой), там же он
+  -- копируется под имя lava-smoke-<планета>.
+  --
+  -- Висит низко над лавой, тёмный и полупрозрачный, крупнее обычного облака
+  -- (scale 1.4 -> кадр 128 px -> ~180 px -> ~5.6 тайла), поэтому пятна дыма
+  -- перекрывают лаву и слегка вылезают за её край.
+  cloud("lava-smoke", "white", 110, {
+    height = {cloud = -1.4, shadow = 2.0},
+    shadow_x = -0.8,
+    scale = 1.4,
+    alpha = 0.08,
+    tint = {r = 0.0045, g = 0.0045, b = 0.0045},
+    shadow_alpha = 0.2,
   }),
 })

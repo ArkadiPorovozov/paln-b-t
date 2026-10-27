@@ -98,10 +98,10 @@ end)
 
 --require("script.planet-logistics")
 require("script.carkas")
-require("script.ssc-turbine")
+require("script.ssc-turbine")   -- v3: котёл + нативный генератор; старое — script/ssc-turbine-old.lua (не подключается)
 require("script.asm45-corp-site")
 require("script.clouds")
-require("script.zalupa-volcano-smoke")
+--require("script.zalupa-volcano-smoke")
 --require("control-alert-sys")
 
 

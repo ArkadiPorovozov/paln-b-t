@@ -325,7 +325,7 @@ end)
 -- Раз в 15 тиков: надпись, каркасы и проверка готовности площадки.
 -- Важно: внутри одного мода на каждый интервал может быть только один
 -- обработчик — эта регистрация затирает любой другой on_nth_tick(15).
--- Поэтому турбины (script/ssc-turbine.lua) обновляются на тике 10.
+-- Поэтому турбины (script/ssc-turbine.lua) обновляются на тике 30.
 script.on_nth_tick(15, function()
   each_site(function(site)
     local produced = site.products_finished or 0

@@ -1,6 +1,36 @@
 -- Границы и свечение белой лавы: меняются прототипы, созданные в data.lua.
 require("prototype.white-lava-edges")
 
+-- Планета sun использует тайлы космоса и космическую платформу на обычной
+-- поверхности планеты. space-platform-foundation по умолчанию помечен как
+-- "space": подсказка атласу, что спрайты нужны только на космических
+-- платформах. На sun они нужны и на поверхности планеты, поэтому разрешаем
+-- использовать их везде (иначе кромка платформы может не попасть в атлас).
+local space_platform_foundation = data.raw["tile"] and data.raw["tile"]["space-platform-foundation"]
+if space_platform_foundation then
+  space_platform_foundation.sprite_usage_surface = "any"
+end
+
+-- Рецепт солнечного фундамента открывается там же, где ванильный рецепт
+-- space-platform-foundation: технологией rocket-silo (вместе с
+-- unlock-space-platforms). Так на sun можно строить платформу над лавой,
+-- как только в игре появляются космические платформы.
+local rocket_silo_technology = data.raw["technology"] and data.raw["technology"]["rocket-silo"]
+if rocket_silo_technology and data.raw["recipe"]["sun-platform-foundation"] then
+  rocket_silo_technology.effects = rocket_silo_technology.effects or {}
+  local already_unlocked = false
+  for _, effect in pairs(rocket_silo_technology.effects) do
+    if effect.type == "unlock-recipe" and effect.recipe == "sun-platform-foundation" then
+      already_unlocked = true
+      break
+    end
+  end
+  if not already_unlocked then
+    table.insert(rocket_silo_technology.effects,
+      {type = "unlock-recipe", recipe = "sun-platform-foundation"})
+  end
+end
+
 -- Белый глубокий нефтяной океан 2: в prototype/tile.lua у белых тайлов
 -- autoplace снят, чтобы они не спавнились сами. Для планеты zalupa он нужен:
 -- это базовый тайл всей планеты. Выражение zalupa_oil_prob определено
@@ -29,6 +59,19 @@ end
 local CLOUD_RESOURCES = {
   {resource = "q1-ore", suffix = "white", template = "q1-cloud-white", order = "z-a"},
   {resource = "q2-ore", suffix = "orange", template = "q2-cloud-orange", order = "z-b"},
+}
+
+-- Планеты, где облака не генерируются вообще. sun — раскалённая лава без
+-- атмосферы: облака над рудой там смотрятся чужеродно, а дым над лавой ей
+-- тем более не нужен. Облака ставит autoplace, поэтому недостаточно убрать
+-- их из сейва — они попадут в каждый новый мир при генерации.
+--
+-- Прототипы для таких планет всё равно создаются (см. add_resource_cloud), но
+-- без autoplace: в уже сгенерированных мирах облака могли быть поставлены, и
+-- без прототипа сохранение не загрузилось бы. Так же в моде хранятся старые
+-- тайлы и заготовки облаков (prototype/entity/clouds.lua).
+local NO_CLOUDS_PLANETS = {
+  sun = true,
 }
 
 local function resource_probability_expression(planet, resource_name)
@@ -120,9 +163,12 @@ local function sanitize(name)
   return (name:gsub("[^%w]", "_"))
 end
 
-local function add_resource_cloud(planet, template_name, suffix, order, parts)
+local function add_resource_cloud(planet, template_name, suffix, order, parts, enable_autoplace)
   local template = data.raw["simple-entity"] and data.raw["simple-entity"][template_name]
-  if not template or #parts == 0 then
+  if not template then
+    return
+  end
+  if enable_autoplace and #parts == 0 then
     return
   end
 
@@ -132,30 +178,40 @@ local function add_resource_cloud(planet, template_name, suffix, order, parts)
   local probability_name = "resource_cloud_probability_" .. planet_key .. "_" .. suffix
   local cloud_name = "resource-cloud-" .. planet_key .. "-" .. suffix
 
-  data:extend({
-    {
-      type = "noise-expression",
-      name = probability_name,
-      expression = "clamp(" .. max_expression(parts) .. ", 0, 1)",
-    },
-  })
-
   local cloud = table.deepcopy(template)
   cloud.name = cloud_name
-  cloud.autoplace = {
-    -- У облаков order больше, чем у руд (у руд order пустой), чтобы облако не
-    -- занимало тайл раньше ресурса. У белого и оранжевого облака РАЗНЫЕ order:
-    -- движок ставит только одно из сущностей с одинаковым order на тайл, а
-    -- облака должны накладываться друг на друга.
-    order = order,
-    probability_expression = probability_name,
-    richness_expression = "1",
-  }
+
+  if enable_autoplace then
+    data:extend({
+      {
+        type = "noise-expression",
+        name = probability_name,
+        expression = "clamp(" .. max_expression(parts) .. ", 0, 1)",
+      },
+    })
+
+    cloud.autoplace = {
+      -- У облаков order больше, чем у руд (у руд order пустой), чтобы облако не
+      -- занимало тайл раньше ресурса. У белого и оранжевого облака РАЗНЫЕ order:
+      -- движок ставит только одно из сущностей с одинаковым order на тайл, а
+      -- облака должны накладываться друг на друга.
+      order = order,
+      probability_expression = probability_name,
+      richness_expression = "1",
+    }
+  else
+    -- Планета без облаков: прототип остаётся только ради старых сейвов, где
+    -- облака уже стоят (иначе они бы не загрузились). Новые не появляются.
+    cloud.autoplace = nil
+  end
+
   data:extend({cloud})
 
-  local entity_settings = get_entity_settings(planet)
-  if entity_settings then
-    entity_settings.settings[cloud_name] = {}
+  if enable_autoplace then
+    local entity_settings = get_entity_settings(planet)
+    if entity_settings then
+      entity_settings.settings[cloud_name] = {}
+    end
   end
 end
 
@@ -165,11 +221,65 @@ for _, planet in pairs(data.raw.planet or {}) do
     enabled[resource_name] = true
   end
 
+  local no_clouds = NO_CLOUDS_PLANETS[planet.name]
+
   for _, cloud in ipairs(CLOUD_RESOURCES) do
-    if enabled[cloud.resource] then
+    if no_clouds then
+      -- Планета без облаков (sun): прототипы создаём только ради старых
+      -- сейвов — там облака могли остаться с тех пор, когда руда на планете
+      -- ещё генерировалась. Autoplace не даём, поэтому новых не будет.
+      add_resource_cloud(planet, cloud.template, cloud.suffix, cloud.order, {}, false)
+    elseif enabled[cloud.resource] then
       local probability = resource_probability_expression(planet, cloud.resource)
       if probability then
-        add_resource_cloud(planet, cloud.template, cloud.suffix, cloud.order, {probability})
+        add_resource_cloud(planet, cloud.template, cloud.suffix, cloud.order, {probability}, true)
+      end
+    end
+  end
+end
+
+-- =====================================================================
+-- Тёмный дым над лавой (simple-entity).
+-- =====================================================================
+-- Заготовка лежит в prototype/entity/clouds.lua ("lava-smoke") без autoplace.
+-- Здесь выдаём ей autoplace — но только планетам, которые используют нашу
+-- генерацию лавы. Признак: вероятность тайла "lava" указывает на
+-- zalupa_volcano_lava_prob (см. prototype/planet/map-gen.lua).
+--
+-- Само покрытие и разрывы считает noise-выражение zalupa_lava_smoke_prob
+-- (prototype/planet/noise-data.lua): та же форма вулкана, что и у лавы,
+-- поэтому дым ложится на лаву и чуть выходит за её край, а пробелы даёт
+-- отдельное поле шума + случайный ролл autoplace.
+local LAVA_SMOKE_TEMPLATE = "lava-smoke"
+local LAVA_TILE_PROBABILITY = "zalupa_volcano_lava_prob"
+
+local lava_smoke_template = data.raw["simple-entity"] and
+  data.raw["simple-entity"][LAVA_SMOKE_TEMPLATE]
+
+if lava_smoke_template then
+  for _, planet in pairs(data.raw.planet or {}) do
+    local map_gen_settings = planet.map_gen_settings
+    local property_names = map_gen_settings and map_gen_settings.property_expression_names
+    local lava_probability = property_names and property_names["tile:lava:probability"]
+
+    if lava_probability == LAVA_TILE_PROBABILITY and not NO_CLOUDS_PLANETS[planet.name] then
+      local cloud_name = "lava-smoke-" .. sanitize(planet.name)
+      local cloud = table.deepcopy(lava_smoke_template)
+      cloud.name = cloud_name
+      cloud.autoplace = {
+        -- Дым кладём позже остальных autoplace-сущностей (руды/облака выше),
+        -- чтобы он не занимал тайл раньше них. Маска столкновений у дыма
+        -- пустая, так что он спокойно встаёт поверх руды.
+        order = "z-z",
+        probability_expression = "zalupa_lava_smoke_prob",
+      }
+      data:extend({cloud})
+
+      -- Регистрируем дым в наборе сущностей планеты (у неё
+      -- treat_missing_as_default = false, поэтому список обязателен).
+      local entity_settings = get_entity_settings(planet)
+      if entity_settings then
+        entity_settings.settings[cloud_name] = {}
       end
     end
   end
@@ -181,10 +291,9 @@ end
 -- undo/redo, восстановление из "призраков" и т.п. А ещё он автоматически
 -- создаёт и уничтожает "детей" турбины.
 --
--- Ребёнок "generator" (ssc-turbine-generator) описан ниже и создаётся/удаляется
--- вместе с турбиной. Скрипт script/ssc-turbine.lua его не трогает: он лишь
--- включает генератор (6MW), пока турбина жжёт топливо, и выключает (0), когда
--- не жжёт.
+-- Ребёнок "generator" (нативный генератор ssc-turbine-plant) создаётся/удаляется
+-- вместе с турбиной. Скрипт его не трогает вообще: генератор жжёт плазму из
+-- турбины сам, сам даёт 6 МВт и сам пускает пар (см. prototype/entity/ssc-turbine.lua).
 local things_names = data.raw["mod-data"] and data.raw["mod-data"]["things-names"]
 
 if things_names then
@@ -193,10 +302,20 @@ if things_names then
     name = "ssc-turbine",
     -- Автоматически делать Thing из каждой построенной турбины.
     intercept_construction = true,
+    -- 0-things переизлучает свои события как обычные кастомные события Factorio.
+    -- Скрипт (script/ssc-turbine.lua) ловит их и так узнаёт о новой турбине — без
+    -- подписки на on_built_entity (её уже занимает script/carkas.lua, а второй
+    -- обработчик на то же событие в одном моде затирает первый) и без сканов
+    -- поверхности. on_initialized — турбина построена; on_children_changed — у неё
+    -- появился генератор-ребёнок (в этот момент скрипт связывает баки).
+    custom_events = {
+      on_initialized = "ssc-turbine-initialized",
+      on_children_changed = "ssc-turbine-children-changed",
+    },
     children = {
       generator = {
         -- Automatic child: Things создаст этот генератор вместе с турбиной.
-        create = { name = "ssc-turbine-generator" },
+        create = { name = "ssc-turbine-plant" },
       },
     },
   }
@@ -209,6 +328,15 @@ if things_names then
     intercept_construction = true,
   }
 end
+
+-- Кастомные события, которые 0-things переизлучает для турбины (см. custom_events
+-- выше). Регистрируем их всегда: script.on_event по имени необъявленного события
+-- падает с ошибкой при загрузке. Само событие, разумеется, придёт, только если
+-- 0-things есть.
+data:extend({
+  { type = "custom-event", name = "ssc-turbine-initialized" },
+  { type = "custom-event", name = "ssc-turbine-children-changed" },
+})
 
 -- Стоящий каркас площадки: один кадр из штатной анимации MultiBuild.
 --

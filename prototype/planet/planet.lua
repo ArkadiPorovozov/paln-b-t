@@ -43,8 +43,8 @@ end
 
 
 
-local function create_p(name, icon, meme)
-    return {
+local function create_p(name, icon, meme, options)
+    local planet = {
         type = "planet",
         name = name,
         icon = icon,
@@ -62,11 +62,21 @@ local function create_p(name, icon, meme)
         unlocked = true,
         --visible_when_disabled = true
     }
+
+    -- Переопределения для конкретной планеты: так sun может быть ближе к
+    -- центру системы, иметь другой размер на карте и свою атмосферу.
+    if options then
+        for key, value in pairs(options) do
+            planet[key] = value
+        end
+    end
+
+    return planet
 end
 
 
-local function a1(name, icon, meme)
-  local a = create_p(name, icon, meme)
+local function a1(name, icon, meme, options)
+  local a = create_p(name, icon, meme, options)
   local b =  create_tex(name, icon)
   return {a,b}
 end
@@ -114,6 +124,74 @@ data.raw.planet["zalupa"].platform_surface_render_parameters.platform_backdrop =
 }
 
 
+-- =====================================================================
+-- Планета sun: лава + космос.
+-- =====================================================================
+-- Поверхность целиком состоит из sun-void (космос, как на платформе) и
+-- морей горячей лавы; сверху тот же рельеф островов, что и у zalupa.
+-- На sun-void можно ставить space-platform-foundation, и её кромка
+-- рисуется так же, как на космической платформе.
+data:extend(a1("sun", q.."/graphics/icons/sun.png", "sun", {
+  starmap_icon = q.."/graphics/planet/sun_starmap_icon.png",
+  starmap_icon_size = 512,
+  gravity_pull = 20,
+  -- Ближе к центру системы, чем любая ванильная планета (Nauvis — 15).
+  distance = 2,
+  orientation = 0.75,
+  magnitude = 0.7,
+  order = "a[sun]",
+  solar_power_in_space = 1200,
+  asteroid_spawn_influence = 1,
+  asteroid_spawn_definitions =
+    asteroid_util.spawn_definitions(asteroid_util.nauvis_vulcanus, 0.9),
+  surface_properties = {
+    -- Как на космической платформе: нет атмосферы, гравитации и смены дня.
+    -- day-night-cycle = 0 — смены дня нет, на солнце всегда день.
+    gravity = 0,
+    pressure = 0,
+    ["magnetic-field"] = 0,
+    ["day-night-cycle"] = 0,
+    -- Рядом со звездой солнечные панели дают намного больше.
+    ["solar-power"] = 1000,
+  },
+}))
+
+
+-- Солнце в небе над платформой, летящей на орбите sun: большой светящийся
+-- шар. Для поверхности и для emission берётся одна и та же текстура, чтобы
+-- планета не была наполовину тёмной.
+data.raw.planet["sun"].platform_surface_render_parameters.platform_backdrop =
+{
+  emission_scales_with_shadow = false,
+  radius = data.raw.planet["nauvis"].platform_surface_render_parameters.platform_backdrop.radius * 1.6,
+  rotation_seconds = 240,
+  surface_vertical_offset = 0.1,
+  specular_intensity = 0.05,
+  specular_color = {1, 0.95, 0.8, 1},
+  atmosphere_color = {1, 0.45, 0.05, 0.45},
+  planet_axis = {0.0, 0.0},
+  planet_axis_deviation_amplitude = {0.0, 0.0},
+  planet_axis_deviation_seconds = {1000.0, 1000.0},
+  position = {-300, 220},
+  parallax_strength = {0.95, 0.95},
+  light_direction = {-0.42, 0.23, 0.4},
+  light_intensity_contrast = 0.1,
+  light_radius = 14.0,
+  planet_surface =
+  {
+    filename = q.."/graphics/planet/sun_color.png",
+    width = 1024,
+    height = 1024
+  },
+  planet_emission =
+  {
+    filename = q.."/graphics/planet/sun_color.png",
+    width = 1024,
+    height = 1024
+  }
+}
+
+
 data:extend(
 	{
 		{
@@ -126,6 +204,28 @@ data:extend(
 			length = 10000,
 			asteroid_spawn_definitions = asteroid_util.spawn_definitions(asteroid_util.nauvis_fulgora),
 			icon = "__space-age__/graphics/icons/solar-system-edge.png"
+		},
+		{
+			type = "space-connection",
+			name = "nauvis-sun",
+			subgroup = "planet-connections",
+			from = "nauvis",
+			to = "sun",
+			order = "e[nauvis-sun]",
+			length = 12000,
+			asteroid_spawn_definitions = asteroid_util.spawn_definitions(asteroid_util.nauvis_vulcanus),
+			icon = q.."/graphics/icons/sun.png"
+		},
+		{
+			type = "space-connection",
+			name = "zalupa-sun",
+			subgroup = "planet-connections",
+			from = "zalupa",
+			to = "sun",
+			order = "f[zalupa-sun]",
+			length = 8000,
+			asteroid_spawn_definitions = asteroid_util.spawn_definitions(asteroid_util.nauvis_vulcanus),
+			icon = q.."/graphics/icons/sun.png"
 		},
 	}
 )

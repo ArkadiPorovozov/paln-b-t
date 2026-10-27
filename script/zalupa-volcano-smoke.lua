@@ -8,7 +8,7 @@
 local SMOKE_NAME = "magma-eruption-dark-smoke"
 local FALLBACK_SMOKE = "smoke"
 local SEARCH_RADIUS = 48
-local EMIT_INTERVAL = 240
+local EMIT_INTERVAL = 1
 
 local function smoke_name()
   if prototypes and prototypes.trivial_smoke and prototypes.trivial_smoke[SMOKE_NAME] then

@@ -9,9 +9,12 @@
 require("prototype.entity.entity")
 require("prototype.entity.entity-a")
 require("prototype.entity.rock")
+require("prototype.entity.sun-heat-exchanger")   -- теплообменник, который охлаждает sun
+require("prototype.entity.sun-core-exchanger")   -- внутренний теплообменник: стоит на площадке всегда
 --require("prototype.entity.planet-logistics")
 require("prototype.item.item")
 require("prototype.tile")
+require("prototype.sun-cooling-old")   -- прототипы отключённой механики sun: нужны только для загрузки старых сейвов
 require("prototype.item.sun-platform-foundation")
 
 require("prototype.planet.map-gen")

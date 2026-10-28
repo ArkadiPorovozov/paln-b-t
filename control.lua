@@ -101,6 +101,7 @@ require("script.carkas")
 require("script.ssc-turbine")   -- v3: котёл + нативный генератор; старое — script/ssc-turbine-old.lua (не подключается)
 require("script.asm45-corp-site")
 require("script.clouds")
+require("script.sun-cooling")   -- sun: ядро площадки; механика плавления отключена, её код — script/sun-cooling-old.lua
 --require("script.zalupa-volcano-smoke")
 --require("control-alert-sys")
 

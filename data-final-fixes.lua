@@ -31,6 +31,29 @@ if rocket_silo_technology and data.raw["recipe"]["sun-platform-foundation"] then
   end
 end
 
+-- Теплообменник открывается технологией sun: раньше на планету всё равно не
+-- попасть, а на месте без него база не проживёт и минуты.
+local SUN_TECHNOLOGY = "sun"
+local SUN_RECIPES = {"sun-heat-exchanger"}
+local sun_technology = data.raw["technology"] and data.raw["technology"][SUN_TECHNOLOGY]
+if sun_technology then
+  sun_technology.effects = sun_technology.effects or {}
+  for _, recipe in ipairs(SUN_RECIPES) do
+    if data.raw["recipe"][recipe] then
+      local already_unlocked = false
+      for _, effect in pairs(sun_technology.effects) do
+        if effect.type == "unlock-recipe" and effect.recipe == recipe then
+          already_unlocked = true
+          break
+        end
+      end
+      if not already_unlocked then
+        table.insert(sun_technology.effects, {type = "unlock-recipe", recipe = recipe})
+      end
+    end
+  end
+end
+
 -- Белый глубокий нефтяной океан 2: в prototype/tile.lua у белых тайлов
 -- autoplace снят, чтобы они не спавнились сами. Для планеты zalupa он нужен:
 -- это базовый тайл всей планеты. Выражение zalupa_oil_prob определено

@@ -12,6 +12,8 @@
 local shared = (pcall(require, "shared") and require("shared")) or require("script/shared")
 local platform_anim = (pcall(require, "platform_anim") and require("platform_anim")) or require("script/platform_anim")
 
+local orbital_requester = require("script.orbital-requester")
+
 local FRAME = shared.FRAME_NAME
 local SELECTOR = shared.SELECTOR_NAME
 local COST_FROM_INVENTORY = shared.COST_FROM_INVENTORY
@@ -1854,6 +1856,7 @@ end
 
 -- ===== GUI EVENTS =====
 script.on_event(defines.events.on_gui_opened, function(event)
+  if orbital_requester.remember_open(event) then return end
   local player = game.get_player(event.player_index)
   if not player then return end
 
@@ -1892,6 +1895,7 @@ script.on_event(defines.events.on_gui_opened, function(event)
 end)
 
 script.on_event(defines.events.on_gui_closed, function(event)
+  orbital_requester.closed(event)
   local player = game.get_player(event.player_index)
   if not player then return end
 
@@ -1905,6 +1909,7 @@ script.on_event(defines.events.on_gui_closed, function(event)
 end)
 
 script.on_event(defines.events.on_gui_click, function(event)
+  if orbital_requester.click(event) then return end
   local el = event.element
   if not (el and el.valid) then return end
   local player = game.get_player(event.player_index)

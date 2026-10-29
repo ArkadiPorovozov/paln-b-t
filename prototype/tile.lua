@@ -1,4 +1,4 @@
--- Белые «водные» тайлы — копии ванильных тайлов с осветлёнными текстурами:
+﻿-- Белые «водные» тайлы — копии ванильных тайлов с осветлёнными текстурами:
 --   * white-lava            — копия глубокой лавы Вулкана (tile "lava-hot", tile-effect "lava");
 --   * white-oil-ocean-deep  — копия глубокого нефтяного океана Фулгоры ("oil-ocean-deep");
 --   * white-oil-ocean-deep-2 — его второй вариант ("oil-ocean-deep-2").
@@ -572,4 +572,260 @@ if platform_foundation then
   data:extend({sun_platform})
 else
   log("[paln-b-test] prototype/tile.lua: не найден тайл space-platform-foundation")
+end
+
+-- =====================================================================
+-- Тёмное глубокое озеро — копия gleba-deep-lake с Глебы.
+-- =====================================================================
+--
+-- Отличия от оригинала:
+--   * темнее: оттенок воды задаёт effect_color (тинт water-шейдера), он
+--     приглушён примерно в 2.5 раза — вместе с map_color и
+--     effect_color_secondary;
+--   * без звуков: убраны шаги, приводнение, транспорт и ambient
+--     (плеск воды / дождь), а также звук постройки;
+--   * лежит ПОД всеми остальными тайлами — так же, как лава на sun.
+--
+-- Как это работает (подробный разбор — в разделе sun выше):
+--   * layer_group = "water", layer = 1 — самая нижняя группа тайлов:
+--     zero -> water -> water-overlay -> ground-natural -> ground-artificial.
+--     Всё, что выше (земля, насыпь, плиты платформы), рисуется поверх;
+--   * effect_is_opaque = false — ключевой флаг. Если оставить по умолчанию
+--     (true при непрозрачном effect_color), water-шейдер рисуется отдельным
+--     НЕПРОЗРАЧНЫМ проходом поверх обычных тайлов, и layer_group его не
+--     спасает. С false шейдер смешивается внутри своей группы;
+--   * в "water" полупрозрачный шейдер ещё и анимируется, а в "water-overlay"
+--     движок рисует его статично (проверено на sun).
+--
+-- Тайл самодостаточен и сам по себе не генерируется (autoplace = const_zero).
+-- Чтобы использовать его на планете, достаточно прописать его в
+-- map_gen_settings (пример — prototype/planet/dark-ocean.lua); тогда же можно
+-- убрать слой сущностей dark-water-shader, он станет не нужен.
+local deep_lake = data.raw["tile"] and data.raw["tile"]["gleba-deep-lake"]
+if deep_lake then
+  -- Своя подгруппа, чтобы тайл не терялся среди ванильных в редакторе.
+  data:extend({
+    {
+      type = "item-subgroup",
+      name = "dark-tiles",
+      group = "tiles",
+      order = "0-a[dark-tiles]"
+    }
+  })
+
+  local dark_lake = table.deepcopy(deep_lake)
+  dark_lake.name = "dark-deep-lake"
+  dark_lake.order = "z[other]-a[dark-deep-lake]"
+  dark_lake.subgroup = "dark-tiles"
+  dark_lake.localised_name = {"tile-name.dark-deep-lake"}
+  dark_lake.factoriopedia_alternative = "gleba-deep-lake"
+
+  -- Цвет. effect_color — тинт water-шейдера, именно он задаёт оттенок воды:
+  -- у Gleba {31, 51, 60}. Сначала вода была почти чёрной (в 2.5 раза темнее,
+  -- {12, 20, 25}) — получилось слишком глухо, поэтому сделали чуть светлее
+  -- (примерно в 1.9 раза темнее Глебы, {16, 26, 33}), вместе с
+  -- effect_color_secondary и map_color.
+  dark_lake.effect_color = {16, 26, 33}
+  dark_lake.effect_color_secondary = {24, 38, 8}
+  dark_lake.map_color = {11, 20, 27}
+
+  -- Как out-of-map/empty-space: самый нижний слой "zero". Тогда родная
+  -- вулканическая кромка (её background в ванили тоже "zero") рисуется ровно
+  -- как на Вулкане — над водой и под вулканической плиткой.
+  dark_lake.layer_group = "zero"
+  dark_lake.layer = 0
+  dark_lake.effect_is_opaque = false
+
+  -- Спрайты должны попасть в атлас на любой поверхности, а не только Глебы.
+  dark_lake.sprite_usage_surface = "any"
+
+  -- Тишина: ни шагов, ни плеска, ни дождя, ни звука постройки.
+  dark_lake.walking_sound = nil
+  dark_lake.landing_steps_sound = nil
+  dark_lake.driving_sound = nil
+  dark_lake.ambient_sounds = nil
+  dark_lake.ambient_sounds_group = nil
+  dark_lake.build_sound = nil
+  dark_lake.mined_sound = nil
+
+  -- Сам по себе не генерируется: вероятность задаёт map_gen планеты.
+  dark_lake.autoplace = {probability_expression = "const_zero"}
+
+  data:extend({dark_lake})
+
+  -- Как sun-surface: тайл ничего не рисует по краям. Убираем чужие переходы
+  -- (водные из gleba-deep-lake), а empty_transitions = true у него уже есть от
+  -- оригинала — кромку к нашей воде рисует сосед (вулканический тайл).
+  dark_lake.transitions = nil
+  dark_lake.transitions_between_transitions = nil
+
+  -- Игра сама считает тёмную воду «краем карты» для переходов (как
+  -- out-of-map/empty-space). Так любой тайл со своим out-of-map переходом
+  -- нарисует к ней родную кромку, без наших правок в его прототипе.
+  out_of_map_tile_type_names = out_of_map_tile_type_names or {}
+  table.insert(out_of_map_tile_type_names, "dark-deep-lake")
+else
+  log("[paln-b-test] prototype/tile.lua: не найден тайл gleba-deep-lake")
+end
+
+-- =====================================================================
+-- Тёмные копии вулканических тайлов Вулкана.
+-- =====================================================================
+--
+-- Семь наземных тайлов Вулкана копируются один в один (префикс "dark-") и
+-- кладутся в подгруппу "dark-tiles". Локализация берётся у ванильных тайлов:
+-- localised_name ссылается на tile-name.<оригинал>, поэтому новых записей в
+-- locale не нужно.
+--
+-- Переходы у копий остаются родные (water/lava/out-of-map из
+-- lava_stone_transitions), поэтому связи с обычными тайлами работают как у
+-- ванильных вулканических тайлов. Для границы с тёмной водой мы не подменяем
+-- спрайты, а просим движок нарисовать её сам: добавляем "dark-deep-lake" в
+-- to_tiles родного out-of-map перехода.
+--
+-- Тайлы самодостаточны и сами по себе не генерируются (autoplace = const_zero):
+-- чтобы использовать их на планете, пропишите их в map_gen_settings
+-- (пример — prototype/planet/dark-ocean.lua).
+local dark_volcanic_tiles = {
+  "volcanic-folds-flat",
+  "volcanic-folds",
+  "volcanic-smooth-stone",
+  "volcanic-smooth-stone-warm",
+  "volcanic-ash-cracks",
+  "volcanic-jagged-ground",
+  "volcanic-ash-light",
+}
+
+-- Настраиваем родной out-of-map переход копии так, чтобы движок сам рисовал
+-- вулканическую кромку к тёмной воде. Спрайт и layout родные, цвет не трогаем;
+-- в to_tiles ванильной записи перечислены
+-- {"out-of-map", "empty-space", "oil-ocean-shallow"} — добавляем туда
+-- "dark-deep-lake". Список принадлежит глубокой копии тайла, ванильные тайлы
+-- не затрагиваются. Все остальные переходы (вода/лава/обычные тайлы) остаются
+-- родными.
+--
+-- Слой: в ванили этот background лежит в "zero" — ниже воды, потому что сосед
+-- там out-of-map без шейдера. У нас сосед — тёмная вода с водным шейдером,
+-- который рисуется выше "zero" и полностью закрывает кромку. Поэтому кладём
+-- background в "water-overlay": по описанию движка это группа для «переходов
+-- к воде, которые должны быть под тайлами». Она выше водного шейдера и ниже
+-- ground-natural, то есть кромка видна над водой и остаётся под плиткой —
+-- так же, как выглядит ванильная кромка на Вулкане.
+-- Кромка к тёмной воде рисуется родным спрайтом out-of-map перехода. Чтобы
+-- она «растворялась» вниз (в воду), у спрайта-копии альфа background-колонки
+-- притушена книзу: верх кромки непрозрачный, к дальнему краю уходит в 0.
+-- (В спрайтшите видимую альфу даёт колонка background; колонка mask — жёсткая
+-- маска только 0/255.) Копии лежат в graphics/terrain/volcanic-oom/; сами
+-- спрайты готовятся из ванильных скриптом, здесь только подключаем.
+local out_of_map_border_copies = {
+  ["__space-age__/graphics/terrain/out-of-map-transition/volcanic-out-of-map-transition.png"] =
+    graphics .. "volcanic-oom/volcanic-out-of-map-transition.png",
+  ["__space-age__/graphics/terrain/out-of-map-transition/volcanic-out-of-map-transition-transition.png"] =
+    graphics .. "volcanic-oom/volcanic-out-of-map-transition-transition.png",
+}
+
+local function apply_oom_border_copy(list)
+  for _, transition in ipairs(list or {}) do
+    local copy = out_of_map_border_copies[transition.spritesheet]
+    if copy then
+      transition.spritesheet = copy
+    end
+  end
+end
+
+local function apply_space_border(tile)
+  apply_oom_border_copy(tile.transitions)
+  apply_oom_border_copy(tile.transitions_between_transitions)
+  for _, transition in ipairs(tile.transitions or {}) do
+    if transition.transition_group == out_of_map_transition_group_id then
+      local to_tiles = transition.to_tiles or {}
+
+      local has_dark_lake = false
+      for _, name in ipairs(to_tiles) do
+        if name == "dark-deep-lake" then
+          has_dark_lake = true
+          break
+        end
+      end
+      if not has_dark_lake then
+        table.insert(to_tiles, "dark-deep-lake")
+      end
+      transition.to_tiles = to_tiles
+
+      transition.background_layer_group = "water-overlay"
+      transition.background_layer_offset = 1
+      transition.offset_background_layer_by_tile_layer = true
+    end
+  end
+end
+
+for _, source_name in ipairs(dark_volcanic_tiles) do
+  local source = data.raw["tile"] and data.raw["tile"][source_name]
+  if source then
+    local tile = table.deepcopy(source)
+    tile.name = "dark-" .. source_name
+    tile.subgroup = "dark-tiles"
+    tile.order = "z[other]-c[dark-" .. source_name .. "]"
+    tile.localised_name = {"tile-name." .. source_name}
+    -- Спрайты нужны на поверхности нашей планеты, а не только на Вулкане.
+    tile.sprite_usage_surface = "any"
+    tile.autoplace = {probability_expression = "const_zero"}
+    apply_space_border(tile)
+    data:extend({tile})
+  else
+    log("[paln-b-test] prototype/tile.lua: не найден исходный тайл " .. source_name)
+  end
+end
+
+-- =====================================================================
+-- Лавовый пик островов тёмного океана.
+-- =====================================================================
+--
+-- Полная копия ванильной лавы Вулкана (tile "lava"): deepcopy целиком, только
+-- переименование и то, без чего копия не заработает на нашей поверхности.
+-- На тёмном океане она ставится на самый верх уровня острова — «пик» (см.
+-- prototype/planet/dark-ocean.lua, dark_ocean_prob_lava).
+--
+-- Изменяется относительно ванильного оригинала:
+--   * name/subgroup/order/localised_name — это отдельный тайл;
+--   * sprite_usage_surface = "any" — спрайты нужны на нашей поверхности;
+--   * autoplace = const_zero — сам по себе не генерируется (иначе полез бы
+--     ещё и на Вулкан);
+--   * allowed_neighbors: в ванили там только {"lava-hot"} (на Вулкане лава
+--     обязана граничить с горячей), расширяем до наших вулканических тайлов —
+--     иначе лава не может соседствовать с островом. Так же сделано у
+--     sun-lava-hot;
+--   * регистрируем копию в lava_tile_type_names/water_tile_type_names, чтобы
+--     соседние тайлы рисовали к ней родную лавовую кромку и шейдер (как
+--     sun-lava-hot и white-lava).
+local lava_source = data.raw["tile"] and data.raw["tile"]["lava"]
+if lava_source then
+  local dark_lava = table.deepcopy(lava_source)
+  dark_lava.name = "dark-lava"
+  dark_lava.subgroup = "dark-tiles"
+  dark_lava.order = "z[other]-b[dark-lava]"
+  dark_lava.localised_name = {"tile-name.lava"}
+  dark_lava.sprite_usage_surface = "any"
+  dark_lava.autoplace = {probability_expression = "const_zero"}
+
+  local lava_neighbors = {
+    "dark-lava", "lava", "lava-hot",
+    "dark-deep-lake",
+    "dark-volcanic-folds-flat", "dark-volcanic-folds",
+    "dark-volcanic-smooth-stone", "dark-volcanic-smooth-stone-warm",
+    "dark-volcanic-ash-cracks", "dark-volcanic-ash-light",
+    "dark-volcanic-jagged-ground",
+  }
+  dark_lava.allowed_neighbors = lava_neighbors
+
+  data:extend({dark_lava})
+
+  -- Другие тайлы (вулканические, фундамент и т.д.) должны рисовать кромку лавы
+  -- и для этой копии, а шейдер — считать её лавовой.
+  lava_tile_type_names = lava_tile_type_names or {}
+  table.insert(lava_tile_type_names, "dark-lava")
+  water_tile_type_names = water_tile_type_names or {}
+  table.insert(water_tile_type_names, "dark-lava")
+else
+  log("[paln-b-test] prototype/tile.lua: не найден тайл lava")
 end

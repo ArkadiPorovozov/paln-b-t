@@ -102,6 +102,7 @@ require("script.ssc-turbine")   -- v3: котёл + нативный генер�
 require("script.asm45-corp-site")
 require("script.clouds")
 require("script.sun-cooling")   -- sun: ядро площадки; механика плавления отключена, её код — script/sun-cooling-old.lua
+require("script.dark-ocean")    -- dark-ocean: слой тёмной воды 16×16 в каждой клетке чанка
 --require("script.zalupa-volcano-smoke")
 --require("control-alert-sys")
 

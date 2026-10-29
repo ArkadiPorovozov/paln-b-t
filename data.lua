@@ -26,3 +26,5 @@ require("prototype.ore.q1-q2")
 --require("data-a")
 
 require("penis2")
+require("script.orbital-requester")
+require("prototype.planet.dark-ocean")   -- планета dark-ocean: океан тёмной воды + слой шейдера по чанкам

@@ -3,13 +3,13 @@
 -- По лаве солнца (sun-surface) нельзя ходить и строить. Единственное,
 -- на чём там можно стоять и строить, — этот фундамент. Это копия
 -- space-platform-foundation, но со своим тайлом (sun-platform-foundation,
--- см. prototype/tile.lua), потому что ванильный предмет кладёт ванильный
+-- см. prototype/tiles/sun.lua), потому что ванильный предмет кладёт ванильный
 -- тайл.
 --
 -- Края и стыки платформы рисуются спрайтами из
 -- __space-age__/graphics/terrain/space-platform (side, inner/outer corner,
 -- double side, u, o + background/mask): они целиком унаследованы копией
--- тайла в prototype/tile.lua.
+-- тайла в prototype/tiles/sun.lua.
 local item_sounds = require("__base__.prototypes.item_sounds")
 
 data:extend({

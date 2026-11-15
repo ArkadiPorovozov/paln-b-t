@@ -126,7 +126,23 @@ ssc_turbine.name = ssc_turbine_it.name
 ssc_turbine.icon = ssc_turbine_it.icon
 ssc_turbine.icon_size = ssc_turbine_it.icon_size
 ssc_turbine.minable = {mining_time = 0.4, result = ssc_turbine_it.name}
-ssc_turbine.flags = {"placeable-neutral", "placeable-player", "player-creation"}
+-- "not-rotatable" — вынужденная мера из-за бага в 0-things 0.6.7.
+--
+-- Турбина зарегистрирована в 0-things (data-final-fixes.lua), но библиотека не
+-- умеет определить её orientation class: статическая таблица знает имя "boiler"
+-- (ванильный котёл), а не "ssc-turbine", а зарегистрировать класс через
+-- mod-data "orientation-classes-by-name" в 0.6.7 нельзя — там опечатка
+-- (`custom[name]` вместо `custom.data[name]`) и любое обращение к mod-data
+-- падает. В итоге класс турбины = Unknown с порядком поворота 0, а обработчик
+-- on_player_rotated_entity всегда применяет преобразование порядка 4 и падает
+-- с "Mismatched dihedral group orders" (dihedral.lua:117).
+--
+-- Запрещаем поворот на уровне прототипа: событие поворота для турбины просто не
+-- возникает, и краш невозможен. Функционально ничего не теряем: арт у турбины
+-- одинаков со всех четырёх сторон, а все трубные соединения симметричны.
+-- Когда баг в 0-things исправят (и появится способ зарегистрировать класс),
+-- флаг можно будет убрать.
+ssc_turbine.flags = {"placeable-neutral", "placeable-player", "player-creation", "not-rotatable"}
 ssc_turbine.max_health = 400
 ssc_turbine.resistances = {{ type = "fire", percent = 70 }}
 ssc_turbine.collision_box = {{-2.3, -2.3}, {2.3, 2.3}}

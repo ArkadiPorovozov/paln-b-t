@@ -76,7 +76,10 @@ local function patch_transitions(tile)
     if transition.lightmap_layout
       and white_lightmaps[file_name(transition.lightmap_layout.spritesheet)]
       and white_borders[file_name(transition.spritesheet)]
-      and (list_contains(to_tiles, "lava") or list_contains(to_tiles, "lava-hot")) then
+      and (list_contains(to_tiles, "lava")
+        or list_contains(to_tiles, "lava-hot")
+        or list_contains(to_tiles, "zalupa-lava")
+        or list_contains(to_tiles, "zalupa-lava-hot")) then
       local white_transition = table.deepcopy(transition)
       white_transition.to_tiles = {WHITE_LAVA}
       white_transition.spritesheet = border_graphics .. file_name(transition.spritesheet)
@@ -91,6 +94,17 @@ local function patch_transitions(tile)
   end
 end
 
-for _, tile in pairs(data.raw["tile"]) do
-  patch_transitions(tile)
+-- Патчим только тайлы мода: ванильные тайлы (в т.ч. Вулкана, генерация
+-- которого в сборке переопределена) не трогаем — из-за нашего white-lava у них
+-- не должно меняться ничего.
+local locality = require("prototype.planet.locality")
+local our_tiles = {}
+for _, name in ipairs(locality.tiles) do
+  our_tiles[name] = true
+end
+
+for name, tile in pairs(data.raw["tile"]) do
+  if our_tiles[name] then
+    patch_transitions(tile)
+  end
 end

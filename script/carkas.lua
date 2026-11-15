@@ -12,7 +12,7 @@
 local shared = (pcall(require, "shared") and require("shared")) or require("script/shared")
 local platform_anim = (pcall(require, "platform_anim") and require("platform_anim")) or require("script/platform_anim")
 
-local orbital_requester = require("script.orbital-requester")
+local orbital_requester = require("script.orbital-requester.init")
 
 local FRAME = shared.FRAME_NAME
 local SELECTOR = shared.SELECTOR_NAME
@@ -1675,6 +1675,21 @@ end
 local function on_entity_placed(event)
   local e = event.entity
   if not (e and e.valid) then return end
+
+  -- Астероиды-телескопы (script/asteroid/telescope.lua): на них запрещены
+  -- двигатели — удаляем сразу, чтобы платформа не могла летать.
+  if e.name == "thruster" then
+    local state = storage.asteroid_telescope
+    local plat = e.surface and e.surface.platform
+    if state and plat and plat.valid then
+      for _, record in ipairs(state.platforms) do
+        if record.name == plat.name then
+          e.destroy()
+          return
+        end
+      end
+    end
+  end
 
   -- 1) Призрак сущности плана из чертежа (Ctrl+V) или из курсора
   if e.name == "entity-ghost" and string.sub(e.ghost_name, 1, 8) == "mb-plan-" then

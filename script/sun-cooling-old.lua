@@ -46,7 +46,7 @@ local COOLING_RADIUS = 8
 local COOLING_RADIUS_SQ = COOLING_RADIUS * COOLING_RADIUS
 
 -- Радиус стартовой площадки: ровно тот круг, который генерирует
--- prototype/planet/noise-data.lua (sun_landing_pad_prob, ~14 тайлов вокруг 0,0).
+-- prototype/planet/gen-sun.lua (paln_sun_landing_pad_prob, ~14 тайлов вокруг 0,0).
 -- Внутри него охлаждает ядро — всегда и без воды.
 local CORE_RADIUS = 14
 local CORE_RADIUS_SQ = CORE_RADIUS * CORE_RADIUS

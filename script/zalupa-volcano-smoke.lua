@@ -41,7 +41,7 @@ script.on_nth_tick(EMIT_INTERVAL, function()
       local tiles = player.surface.find_tiles_filtered{
         position = player.position,
         radius = SEARCH_RADIUS,
-        name = { "lava", "lava-hot" }
+        name = { "zalupa-lava", "zalupa-lava-hot" }
       }
 
       if #tiles > 0 then

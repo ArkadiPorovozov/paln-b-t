@@ -18,9 +18,11 @@ end
 
 require("prototype.entity.assembling-machine-45-corp")
 require("prototype.entity.asm45-corp-site")
+require("prototype.entity.industrial-assembler")   -- большой сборщик 4×4: база + кадры сборки ракеты из ракетной шахты
 require("prototype.entity.ssc-turbine")   -- v3: котёл + нативный генератор; старое — prototype/entity/ssc-turbine-old.lua (не подключается)
 require("prototype.entity.atmo-cond")
 require("prototype.entity.clouds")
+require("prototype.entity.bubbles")   -- trivial-smoke bubble-single-01...10 (пузыри)
 require("prototype.entity.sheathing")
 require("prototype.entity.sheathing-ground")
 require("prototype.entity.cable")

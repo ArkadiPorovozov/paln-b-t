@@ -97,17 +97,25 @@ end)
 
 
 --require("script.planet-logistics")
-require("script.carkas")
+--require("script.carkas")   -- каркасы MultiBuild отключены (парный к penis2.lua в data.lua)
 require("script.ssc-turbine")   -- v3: котёл + нативный генератор; старое — script/ssc-turbine-old.lua (не подключается)
 require("script.asm45-corp-site")
 require("script.clouds")
+require("script.bubbles")   -- хелпер эффекта пузырей: bubbles.spawn(surface, position)
 require("script.sun-cooling")   -- sun: ядро площадки; механика плавления отключена, её код — script/sun-cooling-old.lua
-require("script.dark-ocean")    -- dark-ocean: слой тёмной воды 16×16 в каждой клетке чанка
+require("script.planet.dark-ocean")   -- dark-ocean: слой тёмной воды 16×16 в каждой клетке чанка
+require("script.planet.dark-ocean-flood") -- dark-ocean: постройки под водой не работают + значок
+require("script.planet.locality")   -- локальность генерации: чужим планетам тайлы мода не достаются
+require("script.orbital-capsule")   -- орбитальная капсула: пламя по событию запуска
 --require("script.zalupa-volcano-smoke")
 --require("control-alert-sys")
 
 
 --require("script.penis")
+
+require("script.asteroid-test.init")
+-- Астероиды/телескоп
+require("script.asteroid.telescope")
 
 
 

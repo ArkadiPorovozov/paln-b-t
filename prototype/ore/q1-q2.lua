@@ -16,7 +16,7 @@ local function fluid(name, color, flow_color)
   }
 end
 
-local function ore(name, fluid_name, order, map_color, probability, richness)
+local function ore(name, fluid_name, order, map_color)
   return {
     type = "resource",
     name = name,
@@ -61,9 +61,14 @@ local function ore(name, fluid_name, order, map_color, probability, richness)
     },
     stage_counts = {1},
 
+    -- Автоплейс руды по умолчанию выключен (paln_const_zero): вероятность и
+    -- richness задаёт планета через property_expression_names
+    -- (prototype/planet/gen-zalupa.lua -> paln_q1_ore_probability/paln_q2_ore_probability).
+    -- Так руда не появится ни на одной чужой планете, даже если движок
+    -- считает незаданные тайлы/руды включёнными по умолчанию.
     autoplace = {
-      probability_expression = probability,
-      richness_expression = richness,
+      probability_expression = "paln_const_zero",
+      richness_expression = "paln_const_zero",
     },
   }
 end
@@ -76,8 +81,6 @@ data:extend({
 
   -- порядок ("a"/"b") важен: руды не могут лежать на одном тайле,
   -- поэтому у каждой своё поле шума
-  ore("q1-ore", "q1", "e-a", {r = 0.85, g = 0.90, b = 1.00},
-      "q1_ore_probability", "q1_ore_richness"),
-  ore("q2-ore", "q2", "e-b", {r = 0.95, g = 0.62, b = 0.25},
-      "q2_ore_probability", "q2_ore_richness"),
+  ore("q1-ore", "q1", "e-a", {r = 0.85, g = 0.90, b = 1.00}),
+  ore("q2-ore", "q2", "e-b", {r = 0.95, g = 0.62, b = 0.25}),
 })
